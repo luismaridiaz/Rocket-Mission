@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🚀 Rocket Sim Pro</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js" crossorigin="anonymous"></script>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root{
+  --bg-primary:#0a0a0f; --bg-panel:rgba(10,10,15,.97);
+  --border-color:rgba(255,179,71,.15); --accent:#ffb347; --accent-glow:rgba(255,179,71,.3);
+  --text-primary:#e8e8e8; --text-secondary:#8a8a9a; --text-muted:#686878;
+  --shadow:0 4px 30px rgba(0,0,0,.5);
+}
+body{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg-primary);color:var(--text-primary);overflow:hidden;height:100vh;user-select:none;-webkit-user-select:none;}
+.app-container{display:grid;grid-template-columns:340px 1fr;grid-template-rows:1fr;height:100vh;background:var(--bg-primary);}
+.control-panel{background:var(--bg-panel);border-right:1px solid var(--border-color);padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;backdrop-filter:blur(20px);z-index:10;}
+.control-panel::-webkit-scrollbar{width:3px;}
+.control-panel::-webkit-scrollbar-thumb{background:var(--accent);border-radius:4px;}
+.panel-header{display:flex;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--border-color);}
+.panel-header .logo{font-size:28px;animation:rocket-bob 2s ease-in-out infinite;}
+@keyframes rocket-bob{0%,100%{transform:translateY(0) rotate(-5deg);}50%{transform:translateY(-3px) rotate(5deg);}}
+.panel-header h1{font-size:17px;font-weight:800;font-family:'Courier New',monospace;background:linear-gradient(135deg,#ffb347,#ff6b00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.panel-header .version{font-size:9px;color:var(--text-muted);background:rgba(255,179,71,.1);padding:2px 10px;border-radius:12px;border:1px solid var(--border-color);margin-left:auto;}
+.control-group{display:flex;flex-direction:column;gap:5px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.control-group:last-child{border-bottom:none;padding-bottom:0;}
+.control-group label{font-size:10px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.8px;display:flex;justify-content:space-between;}
+.control-group label .value{color:var(--accent);font-family:'Courier New',monospace;font-size:11px;text-shadow:0 0 20px var(--accent-glow);}
+input[type="range"]{-webkit-appearance:none;width:100%;height:3px;padding:9px 0;background-clip:content-box;background:linear-gradient(to right,#1a1a2a,#2a2a3a);border-radius:2px;outline:none;transition:all .3s;box-sizing:content-box;}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;background:radial-gradient(circle,#ffb347,#ff6b00);border-radius:50%;cursor:pointer;border:2px solid #1a1a2a;box-shadow:0 0 20px var(--accent-glow),inset 0 0 10px rgba(255,200,100,.3);transition:all .2s;}
+input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow:0 0 30px var(--accent-glow);}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.btn-row.three{grid-template-columns:1fr 1fr 1fr;}
+.btn{padding:9px 10px;border:none;border-radius:6px;font-weight:700;font-size:10px;cursor:pointer;transition:all .2s cubic-bezier(.4,0,.2,1);text-transform:uppercase;letter-spacing:.5px;position:relative;overflow:hidden;min-height:34px;}
+.btn::after{content:'';position:absolute;top:50%;left:50%;width:0;height:0;border-radius:50%;background:rgba(255,255,255,.2);transform:translate(-50%,-50%);transition:width .6s,height .6s;}
+.btn:active::after{width:300px;height:300px;}
+.btn:hover{transform:translateY(-1px);filter:brightness(1.15);}
+.btn:active{transform:translateY(1px) scale(.97);}
+.btn-secondary{background:rgba(42,42,58,.8);color:var(--text-primary);border:1px solid rgba(255,255,255,.05);}
+.btn-success{background:linear-gradient(135deg,#00ff88,#00cc66);color:#000;box-shadow:0 4px 20px rgba(0,255,136,.3);}
+.btn-danger{background:linear-gradient(135deg,#ff4444,#cc0000);color:#fff;box-shadow:0 4px 20px rgba(255,68,68,.3);}
+.btn-hyper{background:linear-gradient(135deg,#ff00ff,#8800ff);color:#fff;box-shadow:0 4px 20px rgba(255,0,255,.3);}
+.btn-warp{background:linear-gradient(135deg,#00ffff,#0088ff);color:#000;box-shadow:0 4px 20px rgba(0,255,255,.3);}
+.btn-time{background:rgba(255,179,71,.15);color:var(--accent);border:1px solid var(--border-color);}
+.btn.active{animation:btn-pulse 1s ease-in-out infinite;box-shadow:0 0 40px currentColor;}
+.btn-time.active{background:var(--accent);color:#000;box-shadow:0 0 20px var(--accent-glow);animation:none;}
+@keyframes btn-pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.03);}}
+.badge-row{display:flex;gap:4px;flex-wrap:wrap;}
+.mission-date{font-family:'Courier New',monospace;font-size:10px;color:var(--text-secondary);background:rgba(0,0,0,.3);border:1px solid var(--border-color);border-radius:6px;padding:4px 8px;text-align:center;}
+.mission-hud{position:absolute;top:8px;left:8px;background:rgba(10,10,15,.92);border:1px solid var(--accent);border-radius:10px;padding:6px 12px;font-family:'Courier New',monospace;font-size:10px;color:var(--text-secondary);z-index:9;text-align:left;box-shadow:0 0 14px var(--accent-glow);max-width:72vw;line-height:1.5;}
+.mh-title{color:var(--accent);font-weight:700;margin-bottom:4px;}
+.mh-stage{opacity:.4;}
+.mh-stage.done{opacity:1;color:#00ff88;}
+.info-i{color:var(--text-muted);cursor:pointer;font-size:11px;}
+.info-i:hover{color:var(--accent);}
+.attitude-real{font-family:'Courier New',monospace;font-size:10px;color:var(--text-secondary);background:rgba(0,0,0,.3);border:1px solid var(--border-color);border-radius:6px;padding:5px 8px;text-align:center;}
+.attitude-real span{color:var(--accent);font-weight:700;}
+.mission-date span{color:var(--accent);font-weight:700;}
+.badge{padding:2px 10px;border-radius:10px;font-size:8px;font-weight:700;border:1px solid rgba(255,255,255,.05);background:rgba(0,0,0,.3);color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;transition:all .3s;}
+.badge.on{border-color:#00ff88;color:#00ff88;background:rgba(0,255,136,.1);box-shadow:0 0 20px rgba(0,255,136,.1);}
+.badge.warp{border-color:#00ffff;color:#00ffff;background:rgba(0,255,255,.1);box-shadow:0 0 20px rgba(0,255,255,.1);}
+.badge.hyper{border-color:#ff00ff;color:#ff00ff;background:rgba(255,0,255,.1);box-shadow:0 0 20px rgba(255,0,255,.1);}
+.badge.danger{border-color:#ff4444;color:#ff4444;background:rgba(255,68,68,.1);}
+.badge.orbit{border-color:#66ccff;color:#66ccff;background:rgba(102,204,255,.12);box-shadow:0 0 20px rgba(102,204,255,.2);}
+.badge.warning{border-color:#ffaa00;color:#ffaa00;background:rgba(255,170,0,.12);box-shadow:0 0 20px rgba(255,170,0,.15);}
+.telemetry-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;background:rgba(0,0,0,.4);border-radius:8px;padding:8px;border:1px solid var(--border-color);}
+.telemetry-item{text-align:center;padding:3px;border-radius:4px;background:rgba(0,0,0,.2);}
+.telemetry-item .label{font-size:7px;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;}
+.telemetry-item .value{font-size:13px;font-weight:700;font-family:'Courier New',monospace;color:var(--accent);text-shadow:0 0 20px var(--accent-glow);}
+.viewport{position:relative;background:var(--bg-primary);overflow:hidden;}
+.viewport canvas{display:block;width:100% !important;height:100% !important;}
+.hud-overlay{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.85);padding:8px 20px;border-radius:16px;border:1px solid var(--border-color);font-family:'Courier New',monospace;font-size:11px;color:var(--text-secondary);pointer-events:none;white-space:nowrap;backdrop-filter:blur(10px);box-shadow:var(--shadow);z-index:5;}
+.flight-hint{position:absolute;bottom:62px;left:50%;transform:translateX(-50%);background:rgba(10,10,15,.9);padding:6px 16px;border-radius:12px;border:1px solid var(--accent);font-size:11px;color:var(--accent);pointer-events:none;white-space:nowrap;box-shadow:0 0 10px var(--accent-glow);z-index:5;display:none;}
+.flight-hint.show{display:block;}
+.hud-overlay .highlight{color:var(--accent);}
+.hud-overlay .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;animation:hud-blink 1s ease-in-out infinite;}
+.hud-overlay .status-dot.on{background:#00ff88;box-shadow:0 0 20px rgba(0,255,136,.5);}
+.hud-overlay .status-dot.off{background:#ff4444;box-shadow:0 0 20px rgba(255,68,68,.3);}
+.hud-overlay .status-dot.warp{background:#00ffff;box-shadow:0 0 20px rgba(0,255,255,.5);}
+.hud-overlay .status-dot.hyper{background:#ff00ff;box-shadow:0 0 20px rgba(255,0,255,.5);}
+@keyframes hud-blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.shake-overlay{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.3) 100%);opacity:0;transition:opacity .1s;z-index:2;}
+.shake-overlay.active{opacity:.5;}
+.footer-info{font-size:8px;color:#444;text-align:center;border-top:1px solid rgba(255,255,255,.03);padding-top:6px;margin-top:2px;line-height:1.6;}
+.footer-info .keys{color:#555;font-size:7px;}
+.status-msg{position:absolute;top:10px;left:10px;background:rgba(200,0,0,.85);color:#fff;font-size:11px;padding:6px 10px;border-radius:6px;z-index:20;display:none;max-width:300px;}
+.mini-views{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:8;}
+.mini-view{width:150px;height:110px;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);background:#000;position:relative;box-shadow:var(--shadow);}
+.mini-view.selected{border-color:var(--accent);box-shadow:0 0 14px var(--accent-glow);}
+.mini-view canvas{display:block;width:100% !important;height:100% !important;}
+.mini-view .mv-label{position:absolute;top:4px;left:6px;font-size:8px;letter-spacing:.5px;color:var(--accent);font-family:'Courier New',monospace;text-shadow:0 0 6px rgba(0,0,0,.9);pointer-events:none;z-index:2;}
+.mini-view .mv-data{position:absolute;bottom:4px;right:6px;font-size:7px;color:var(--text-secondary);font-family:'Courier New',monospace;text-shadow:0 0 6px rgba(0,0,0,.9);pointer-events:none;z-index:2;text-align:right;}
+.g-meter{position:absolute;bottom:80px;left:16px;width:52px;height:52px;pointer-events:none;z-index:5;opacity:.7;}
+.g-meter svg{width:100%;height:100%;}
+.g-meter circle{transition:stroke-dashoffset .3s ease,stroke .3s ease;}
+.toast-msg{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.9);color:var(--accent);padding:7px 18px;border-radius:8px;border:1px solid var(--border-color);font-family:'Courier New',monospace;font-size:11px;z-index:15;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;}
+.toast-msg.show{opacity:1;}
+.cockpit-overlay{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:4;background:radial-gradient(ellipse at center,transparent 55%,rgba(255,120,60,.15) 100%);opacity:0;transition:opacity .3s;}
+.cockpit-overlay.active{opacity:1;}
+.landing-hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.85);border:1px solid var(--border-color);border-radius:8px;padding:8px 12px;font-family:'Courier New',monospace;font-size:11px;color:var(--text-secondary);z-index:15;min-width:150px;}
+.landing-hud .lh-title{color:var(--accent);font-weight:700;margin-bottom:4px;letter-spacing:.5px;}
+.landing-hud .lh-row{display:flex;justify-content:space-between;gap:10px;}
+.landing-hud .lh-row span:last-child{color:#fff;font-weight:700;}
+.landing-hud .lh-row.danger span:last-child{color:#ff4444;}
+.landing-hud .lh-row.warn span:last-child{color:#ffaa00;}
+@media (max-width:768px){
+  .app-container{grid-template-columns:1fr;grid-template-rows:auto 1fr;}
+  .control-panel{max-height:45vh;border-right:none;border-bottom:1px solid var(--border-color);padding:10px 12px;}
+  .mini-view{width:110px;height:80px;}
+}
+.map-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:#03030a;z-index:50;display:flex;flex-direction:column;}
+.map-fab{position:absolute;bottom:70px;right:14px;width:46px;height:46px;border-radius:50%;background:rgba(10,10,15,.9);border:1px solid var(--accent);box-shadow:0 0 14px var(--accent-glow);font-size:20px;z-index:12;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.map-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(10,10,15,.97);border-bottom:1px solid var(--border-color);color:var(--accent);font-family:'Courier New',monospace;font-weight:700;letter-spacing:.5px;flex-shrink:0;}
+.map-header .btn{padding:5px 12px;font-size:10px;}
+#mapCanvas{flex:1;width:100%;min-height:120px;display:block;touch-action:none;}
+.map-controls{padding:10px 14px;background:rgba(10,10,15,.97);border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:8px;flex-shrink:0;max-height:38vh;overflow-y:auto;}
+.map-zoom-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-secondary);}
+.map-zoom-row input[type="range"]{flex:1;}
+.map-zoom-row span:last-child{min-width:90px;text-align:right;color:var(--accent);font-family:'Courier New',monospace;font-size:9px;}
+.map-small-row{display:flex;flex-wrap:wrap;gap:5px;}
+.btn-small{padding:4px 9px;border:1px solid var(--border-color);border-radius:12px;background:rgba(42,42,58,.6);color:var(--text-secondary);font-size:9px;cursor:pointer;}
+.btn-small.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;}
+</style>
+</head>
+<body>
+<div class="app-container">
+  <div class="control-panel">
+    <div class="panel-header">
+      <span class="logo">🚀</span>
+      <h1>ROCKET SIM</h1>
+      <span class="version">v5.0</span>
+    </div>
+
+    <div class="control-group">
+      <label>Motor (Throttle) <span class="value" id="throttleVal">0%</span></label>
+      <input type="range" id="throttle" min="0" max="1" step="0.01" value="0">
+    </div>
+    <div class="control-group">
+      <label>Cabeceo (Pitch) <span class="info-i" data-tip="cabeceo">ⓘ</span> <span class="value" id="pitchVal">0°</span></label>
+      <input type="range" id="pitch" min="-1" max="1" step="0.01" value="0">
+    </div>
+    <div class="control-group">
+      <label>Guiñada (Yaw) <span class="info-i" data-tip="guinada">ⓘ</span> <span class="value" id="yawVal">0°</span></label>
+      <input type="range" id="yaw" min="-1" max="1" step="0.01" value="0">
+    </div>
+    <div class="control-group">
+      <label>Alabeo (Roll) <span class="info-i" data-tip="alabeo">ⓘ</span> <span class="value" id="rollVal">0°</span></label>
+      <input type="range" id="roll" min="-1" max="1" step="0.01" value="0">
+    </div>
+    <div class="attitude-real" id="attitudeReal">
+      🧭 Actitud real — Cabeceo <span id="realPitch">0°</span> · Rumbo <span id="realYaw">0°</span> · Alabeo <span id="realRoll">0°</span>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-success" id="btnLaunch">🚀 Lanzar</button>
+      <button class="btn btn-danger" id="btnReset">🔄 Reset</button>
+    </div>
+    <button class="btn btn-success" id="btnRefuel" style="display:none;width:100%">⛽ Reabastecer en órbita (etapa)</button>
+
+    <div class="control-group">
+      <label>Motor</label>
+      <div class="btn-row">
+        <button class="btn btn-secondary active" id="btnEngineChem">🔥 Químico</button>
+        <button class="btn btn-secondary" id="btnEngineNuke">☢️ Nuclear</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Piloto automático (actitud)</label>
+      <div class="btn-row three">
+        <button type="button" class="btn btn-secondary active" id="btnApOff">Manual</button>
+        <button type="button" class="btn btn-secondary" id="btnApPro">Prógrado</button>
+        <button type="button" class="btn btn-secondary" id="btnApRetro">Retrógrado</button>
+      </div>
+      <button type="button" class="btn btn-secondary" id="btnApHold" style="width:100%;margin-top:5px">🎯 Frenar y fijar aquí</button>
+    </div>
+    <div class="footer-info" style="text-align:left">El mando de Cabeceo es de resorte: mientras lo arrastras, giras; al soltar el ratón/dedo, vuelve solo al centro y frena. Cuanto más lo desplaces o más tiempo lo sujetes, más giras. Cuando estés cerca del ángulo que buscas, pulsa "Frenar y fijar aquí" — detiene el giro y te deja mirando exactamente donde estás en ese momento.</div>
+
+    <div class="btn-row three">
+      <button class="btn btn-hyper" id="btnHyperspace">🌀 Hiper</button>
+      <button class="btn btn-warp" id="btnWarp">⚡ Warp</button>
+      <button class="btn btn-secondary" id="btnToggleView">👁️ Cabina</button>
+    </div>
+    <button class="btn btn-secondary" type="button" id="btnMap" style="width:100%">🗺️ Mapa del sistema</button>
+    <button class="btn btn-secondary" type="button" id="btnHelp" style="width:100%">❓ Ayuda / Manual</button>
+
+    <div class="control-group">
+      <label>Velocidad del tiempo</label>
+      <div class="btn-row three">
+        <button class="btn btn-time" id="btnTime1">x1</button>
+        <button class="btn btn-time active" id="btnTime100">x100</button>
+        <button class="btn btn-time" id="btnTime3000">x3000</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="btn-row three" style="margin-top:-2px">
+        <button class="btn btn-time" id="btnTime30000">x30k</button>
+        <button class="btn btn-time" id="btnTime300000">x300k</button>
+        <button class="btn btn-time" id="btnTime3000000">x3M</button>
+      </div>
+    </div>
+
+    <div class="mission-date" id="missionDate">
+      📅 <span id="dDate">07 sep 2026</span> · T+ <span id="dElapsed">0s</span>
+    </div>
+
+    <div class="badge-row">
+      <span class="badge off" id="badgeHyperspace">🌀 HIPER</span>
+      <span class="badge off" id="badgeWarp">⚡ WARP</span>
+      <span class="badge on" id="badgeEngine">🔥 MOTOR</span>
+      <span class="badge" id="badgeGForce">📊 1.0g</span>
+      <span class="badge off" id="badgeOrbit">🛰️ ÓRBITA</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="telemetry-item"><div class="label">Altitud</div><div class="value" id="tAltitude">0 m</div></div>
+      <div class="telemetry-item"><div class="label">Velocidad</div><div class="value" id="tVelocity">0 m/s</div></div>
+      <div class="telemetry-item"><div class="label">Combustible</div><div class="value" id="tFuel">100%</div></div>
+      <div class="telemetry-item"><div class="label">G-Force</div><div class="value" id="tGForce">1.00g</div></div>
+      <div class="telemetry-item"><div class="label">Masa</div><div class="value" id="tMass">300 t</div></div>
+      <div class="telemetry-item"><div class="label">V. Orbital</div><div class="value" id="tVOrbit">7900 m/s</div></div>
+    </div>
+
+    <div class="footer-info">
+      🖱️ Arrastra para orbitar · Rueda zoom · 🔊 Click activa sonido
+      <br><span class="keys">⌨️ Space=Lanzar · R=Reset · H=Hiper · W=Warp · V=Vista</span>
+      <br>Consejo para órbita: sube recto, luego inclina (pitch) poco a poco hacia el horizonte mientras aceleras.
+    </div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="mission-hud" id="missionHud" style="display:none">
+      <div class="mh-title" id="mhTitle"></div>
+      <div id="mhStages"></div>
+      <div id="mhNext" style="margin-top:4px;color:#66ccff;"></div>
+      <button type="button" id="btnMissionAuto" style="margin-top:6px;width:100%;padding:6px;font-size:10px;background:rgba(255,179,71,.15);border:1px solid var(--accent);border-radius:8px;color:var(--accent);cursor:pointer;">▶️ Ver misión automática</button>
+      <div id="maControls" style="display:none;margin-top:4px;gap:3px;">
+        <button type="button" id="btnMaPause" style="flex:1;padding:4px;font-size:9px;background:rgba(255,255,255,.05);border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);cursor:pointer;">⏸️</button>
+        <button type="button" class="ma-speed" data-speed="1" style="flex:1;padding:4px;font-size:9px;background:rgba(255,179,71,.25);border:1px solid var(--accent);border-radius:6px;color:var(--accent);cursor:pointer;">x1</button>
+        <button type="button" class="ma-speed" data-speed="2" style="flex:1;padding:4px;font-size:9px;background:rgba(255,255,255,.05);border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);cursor:pointer;">x2</button>
+        <button type="button" class="ma-speed" data-speed="4" style="flex:1;padding:4px;font-size:9px;background:rgba(255,255,255,.05);border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);cursor:pointer;">x4</button>
+        <button type="button" class="ma-speed" data-speed="8" style="flex:1;padding:4px;font-size:9px;background:rgba(255,255,255,.05);border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);cursor:pointer;">x8</button>
+        <button type="button" id="btnMaSkip" style="flex:1.4;padding:4px;font-size:9px;background:rgba(255,255,255,.05);border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);cursor:pointer;">⏭️ Saltar fase</button>
+      </div>
+      <div id="mhAutoStatus" style="margin-top:4px;color:#ffb347;display:none;"></div>
+    </div>
+    <div class="status-msg" id="statusMsg"></div>
+    <div class="mini-views">
+      <div class="mini-view" id="mvFront" style="cursor:pointer"><span class="mv-label">🌍 TIERRA</span><span class="mv-data" id="mvFrontData"></span></div>
+      <div class="mini-view" id="mvBack" style="cursor:pointer"><span class="mv-label">🌑 LUNA</span><span class="mv-data" id="mvBackData"></span></div>
+    </div>
+    <div class="g-meter" id="gMeter">
+      <svg viewBox="0 0 60 60">
+        <circle cx="30" cy="30" r="25" fill="none" stroke="rgba(26,42,58,0.6)" stroke-width="3"/>
+        <circle cx="30" cy="30" r="25" fill="none" stroke="#00ff88" stroke-width="3" stroke-dasharray="157" stroke-dashoffset="157" id="gArc"/>
+        <text x="30" y="34" text-anchor="middle" fill="#a8a8b8" font-size="11" font-family="'Courier New',monospace" id="gLabel">1.0g</text>
+      </svg>
+    </div>
+    <div class="cockpit-overlay" id="cockpitOverlay"></div>
+    <div class="toast-msg" id="toastMsg"></div>
+    <button class="map-fab" type="button" id="btnMapFab">🗺️</button>
+    <div class="landing-hud" id="landingHud" style="display:none">
+      <div class="lh-title">🛬 DESCENSO</div>
+      <div class="lh-row"><span>Altitud</span><span id="lhAlt">0 m</span></div>
+      <div class="lh-row"><span>V. vertical</span><span id="lhVvert">0 m/s</span></div>
+      <div class="lh-row"><span>V. horizontal</span><span id="lhVhoriz">0 m/s</span></div>
+      <div class="lh-row"><span>Combustible</span><span id="lhFuel">0%</span></div>
+    </div>
+    <div class="landing-hud" id="dockHud" style="display:none">
+      <div class="lh-title" id="dhTitle">🛰️ ACOPLAMIENTO</div>
+      <div class="lh-row"><span>Objetivo</span><span id="dhName">-</span></div>
+      <div class="lh-row"><span>Distancia</span><span id="dhDist">0 m</span></div>
+      <div class="lh-row"><span>V. relativa</span><span id="dhSpeed">0 m/s</span></div>
+      <button type="button" class="btn btn-success" id="btnDock" style="width:100%;margin-top:6px;display:none">🔗 Acoplar</button>
+      <button type="button" class="btn btn-danger" id="btnUndock" style="width:100%;margin-top:6px;display:none">🔓 Separar</button>
+    </div>
+    <div class="flight-hint" id="flightHint"></div>
+    <div class="hud-overlay" id="hudOverlay">
+      <span class="status-dot on" id="statusDot"></span>
+      <span class="highlight" id="statusText">EN ESPERA</span>
+      · ALT: <span class="highlight" id="ovAltitude">0</span>
+      · VEL: <span class="highlight" id="ovVelocity">0</span>m/s
+      · G: <span class="highlight" id="ovGForce">1.00</span>g
+    </div>
+    <div class="shake-overlay" id="shakeOverlay"></div>
+  </div>
+</div>
+
+<div class="map-overlay" id="mapOverlay" style="display:none">
+  <div class="map-header">
+    <span>🗺️ MAPA DEL SISTEMA</span>
+    <button class="btn btn-danger" type="button" id="btnMapClose">✕ Cerrar</button>
+  </div>
+  <canvas id="mapCanvas"></canvas>
+  <div class="map-controls">
+    <div class="map-zoom-row">
+      <span>🔍</span>
+      <input type="range" id="mapZoom" min="0" max="1" step="0.01" value="0.15">
+      <span id="mapZoomLabel">vista general</span>
+    </div>
+    <div style="font-size:9px;color:var(--text-muted);text-align:center;">🔵 anillo azul = por encima del plano · 🟠 naranja = por debajo</div>
+    <div class="btn-row three">
+      <button class="btn btn-secondary active" type="button" id="btnCenterSun">☀️ Sol</button>
+      <button class="btn btn-secondary" type="button" id="btnCenterEarth">🌍 Tierra</button>
+      <button class="btn btn-secondary" type="button" id="btnCenterShip">🚀 Nave</button>
+    </div>
+    <div class="map-small-row" id="mapSmallRow">
+      <button type="button" class="btn-small" data-center="mars">Marte</button>
+      <button type="button" class="btn-small" data-center="jupiter">Júpiter</button>
+      <button type="button" class="btn-small" data-center="saturn">Saturno</button>
+      <button type="button" class="btn-small" data-center="uranus">Urano</button>
+      <button type="button" class="btn-small" data-center="neptune">Neptuno</button>
+      <button type="button" class="btn-small" data-center="pluto">Plutón</button>
+      <button type="button" class="btn-small" data-center="halley">Halley</button>
+      <button type="button" class="btn-small" data-center="kuiper">Cinturón Kuiper</button>
+    </div>
+  </div>
+</div>
+
+<div class="map-overlay" id="helpOverlay" style="display:none">
+  <div class="map-header">
+    <span>❓ AYUDA / MANUAL</span>
+    <button class="btn btn-danger" type="button" id="btnHelpClose">✕ Cerrar</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:16px;font-size:12px;line-height:1.7;color:var(--text-secondary);">
+
+    <h3 style="color:var(--accent);margin-bottom:6px;">🕹️ Los tres mandos de actitud</h3>
+    <p><b>Cabeceo (Pitch):</b> inclina el morro de la nave hacia arriba o hacia abajo — como asentir con la cabeza.</p>
+    <p><b>Guiñada (Yaw):</b> gira el morro hacia la izquierda o la derecha — como negar con la cabeza.</p>
+    <p><b>Alabeo (Roll):</b> gira la nave sobre su propio eje longitudinal, como un sacacorchos — inclina las "alas" a un lado.</p>
+    <p style="margin-top:6px;">Los tres son mandos de <b>resorte</b>: mientras los mantienes pulsados, la nave gira; al soltar, el mando vuelve al centro, pero <b>la nave sigue girando por inercia</b> hasta que el frenado natural la detiene. El número junto a cada slider es lo que estás pidiendo; el panel "🧭 Actitud real" debajo muestra el ángulo de verdad de la nave.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🚀 Despegar y llegar a órbita</h3>
+    <p>1) Throttle a 100%, cabeceo en 0° (sube recto) los primeros ~7-8 segundos, para salir de la atmósfera densa.</p>
+    <p>2) Da toques cortos de Cabeceo para ir tumbando la trayectoria poco a poco hacia el horizonte (el "giro gravitatorio"), hasta unos 80-85°.</p>
+    <p>3) Vigila Velocidad frente a V. Orbital en la telemetría: cuando se acerquen y ya no estés subiendo casi vertical, el badge cambia de "🚀 ASCENSO" a "🛰️ ÓRBITA ✓".</p>
+    <p>4) Usa "🎯 Frenar y fijar aquí" (piloto automático) cuando estés cerca del ángulo que buscas, en vez de pelear con la inercia a mano.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🎮 Botones principales</h3>
+    <p><b>Lanzar:</b> pone el motor a tope de golpe. <b>Reset:</b> reinicia la nave en la plataforma.</p>
+    <p><b>Reabastecer en órbita:</b> solo aparece estando en órbita — rellena el depósito (representa un cambio de etapa, no combustible mágico infinito).</p>
+    <p><b>Motor Químico/Nuclear:</b> el nuclear tiene casi el doble de alcance (Isp 880 vs 450) pero úsalo solo en el espacio, no para despegar.</p>
+    <p><b>Piloto automático:</b> Manual (tú controlas) · Prógrado (apunta en la dirección en la que vuelas) · Retrógrado (apunta en la dirección contraria, para frenar) · Frenar y fijar aquí (detiene el giro y mantiene el rumbo exacto que tengas en ese momento).</p>
+    <p><b>Hiper / Warp:</b> modos de diversión que aceleran tu velocidad rápidamente — no son física real, son un "cheat" para moverte rápido.</p>
+    <p><b>Cabina / Externa:</b> cambia entre ver la nave desde fuera o desde dentro, mirando por donde apunta.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">📊 Telemetría y paneles</h3>
+    <p><b>Altitud, Velocidad, Combustible, G-Force, Masa, V. Orbital:</b> lecturas en vivo del vuelo.</p>
+    <p><b>📅 Fecha de misión:</b> el reloj de la simulación — con <code>timeScale</code> alto, avanza mucho por segundo real.</p>
+    <p><b>🛬 Panel de descenso:</b> aparece automáticamente bajo 15 km sin estar en órbita — vigila la velocidad vertical (roja = peligro, ámbar = cuidado).</p>
+    <p><b>🛰️ Panel de acoplamiento:</b> aparece si hay un objetivo cerca (menos de 10 km) — el botón "Acoplar" solo se activa cuando estás a menos de 15m y 0,3 m/s de velocidad relativa.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">⏱️ Velocidad del tiempo</h3>
+    <p>De x1 (tiempo real) hasta x3.000.000 (para trayectos largos, tipo Marte o el cinturón de Kuiper). A mayor velocidad, menos precisión en maniobras finas — bájalo para pilotar con cuidado, súbelo para los tramos de crucero sin nada que hacer.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🗺️ Mapa del sistema</h3>
+    <p>Vista cenital 2D de todo el sistema solar, con zoom táctil (pellizca) o el deslizador. Los anillos de color alrededor de cada planeta indican si está por encima (azul) o por debajo (naranja) del plano de la eclíptica — con inclinaciones orbitales reales, ya no todos los planetas están en el mismo plano.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🎯 Piloto automático de misión: qué es física real y qué no</h3>
+    <p><b>Física real de verdad</b> (pasa por el motor, gasta combustible según la ecuación del cohete): el despegue con giro gravitatorio, la quema de inyección translunar, la inserción en órbita lunar, y el descenso — las cuatro se calculan y ejecutan como quemas reales de motor, con su masa y su combustible.</p>
+    <p><b>Ayudas simplificadas</b> (no gastan combustible del depósito, son ajustes instantáneos de velocidad): las correcciones de rumbo durante el crucero de varios días hacia la Luna, y el empujón final de puntería hacia el perilunio lunar. En una misión real esas correcciones también consumen combustible — aquí no, para que el piloto automático sea fiable sin tener que resolver un problema de navegación mucho más complejo. Es la simplificación más importante de todo el simulador: sin ella, la demostración automática fallaría casi siempre.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">⛽ Por qué el depósito es un 39% más grande que el real</h3>
+    <p><b>Dato real</b>: el Apolo 11 usó aproximadamente <b>2.730.000 kg</b> de propelente en total, repartidos entre Saturno V, CSM y LM como vehículos separados, cada uno con su propio depósito.</p>
+    <p><b>En este simulador</b>: usamos una única pila de <b>3.800.000 kg</b> — un <b>39% más</b> que la cifra real.</p>
+    <p><b>Por qué</b>: nuestra física es una sola pila de combustible con una sola etapa, no cuatro vehículos con depósitos independientes que se van desprendiendo. Eso hace que el ascenso sea menos eficiente que en la realidad (no hay separación de etapas que aligere el vehículo a mitad de subida), y que las correcciones de rumbo y las maniobras de frenada necesiten más ciclos de los que la aritmética ideal predice. Con la cifra real, la demo se queda sin combustible antes de alcanzar la órbita terrestre — lo hemos comprobado de extremo a extremo, no solo calculado.</p>
+    <p>Los 3.800.000 kg son el presupuesto mínimo que hace que la misión completa sea alcanzable <b>en este motor simplificado</b>. No es la cifra real. Es la cifra que la simulación necesita para no fallar, y por eso está declarada aquí en el manual en vez de escondida.</p>
+    <p style="margin-top:10px;"><b>⏱️ Duración del aparcamiento en LEO y posición de la Luna:</b> el piloto entra en TLI tras una órbita corta de estabilización, no las 1,5 vueltas reales del Apolo 11, y coloca la Luna en una posición simplificada (alineada al inicio), no en su cuarto creciente del 16-jul-1969. Las dos cosas están conectadas: la TLI usa una transferencia de Hohmann <i>a la distancia</i> de la Luna, no <i>a la Luna</i>. Corregir cualquiera de las dos rompe la calibración de combustible de la quema translunar — probado de extremo a extremo, no solo calculado. Hacerlo bien requeriría un solver de Lambert, recalibrar el lanzamiento y rehacer el perfil de ascenso: una reconstrucción entera, no un ajuste.</p>
+    <p style="margin-top:10px;"><b>🚀 Separación de etapas y módulo lunar:</b> el modelo 3D muestra la S-IC y la S-II cayendo al salir de órbita terrestre, la S-IVB al llegar a la Luna, y las patas del módulo lunar apareciendo entonces. Es pura decoración — por debajo sigue habiendo un único depósito de combustible que nunca se separa de verdad. Los momentos de caída están atados a las <i>fases</i> del piloto automático, no al reloj de la misión: como nuestra simulación no tarda lo mismo que la real (el TLI aquí llega mucho antes que a las 2h 44m históricas), usar los segundos reales haría que una etapa cayera en mitad del crucero hacia la Luna. El Columbia (CSM) no se queda orbitando por separado — eso exigiría simular dos naves a la vez, y no está hecho.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🗺️ Las fases de la demostración automática, de principio a fin</h3>
+    <p><b>1. Ascenso</b> — motor a tope, giro gravitatorio real hacia el este: recto los primeros 8s, luego inclinando hasta 83°. Pasa a la siguiente fase en cuanto detecta órbita alcanzada.</p>
+    <p><b>2. Órbita terrestre</b> — motor apagado, 60s manteniendo rumbo, mientras se calcula la velocidad exacta que hace falta para la quema translunar.</p>
+    <p><b>3. Quema translunar</b> — motor a tope, prógrado, hasta alcanzar esa velocidad calculada (ecuación vis-viva).</p>
+    <p><b>4. Crucero a la Luna</b> — motor apagado casi todo el tiempo; cada 6h simuladas corrige el rumbo si hace falta. Es la fase más rápida de ver, con el tiempo acelerado al máximo.</p>
+    <p><b>5. Aproximación e inserción lunar</b> — un empujón de puntería hacia un perilunio de 200km, caída libre vigilada, y una frenada real justo en el punto más cercano a la Luna para quedar en órbita baja.</p>
+    <p><b>6. Descenso</b> — gira hacia atrás (retrógrado), frena de verdad hasta parar en seco en esa dirección, y luego desciende suave modulando el gas contra la gravedad real, con un frenado horizontal continuo para no tener que girar más veces.</p>
+    <p><b>7. Alunizaje</b> — fin de la demostración. Puedes seguir pilotando a mano desde ahí.</p>
+    <p style="color:var(--text-secondary);font-style:italic;">Pendiente: el regreso a la Tierra (ascenso lunar, encuentro y acoplamiento, inyección trans-Tierra, reentrada) no está construido todavía — se añadirá más adelante, con su propio presupuesto de combustible calculado aparte.</p>
+  </div>
+</div>
+
+<script>
+window.MISSION_CONFIG = {
+  title: 'Apolo 11',
+  briefing: 'Lleva a la tripulacion a la Luna, entra en orbita lunar y desciende hasta posarte suavemente en el Mar de la Tranquilidad -- como hizo el modulo Eagle el 20 de julio de 1969. Esta nave tiene la capacidad real combinada del Saturno V y el modulo lunar (con el deposito estandar del simulador ni siquiera llegarias con margen a la Luna). Mira el panel de arriba: te dice el siguiente hito real y cuando tocaba, para que sepas que boton tocar y cuando. Dato real: el cohete de verdad despego con un azimut de 72,058 grados (no hacia el este puro); aqui despegamos hacia el este exacto a proposito, porque es la unica forma de que nuestro modelo simplificado del plano orbital de la Luna sea alcanzable sin gastar combustible extra en un cambio de plano.',
+  fuelMass: 3800000,
+  maxThrust: 82659060, // validado de extremo a extremo: despegue+TLI+orbita lunar+descenso completos, con margen real de sobra (no solo teorico)
+  // Nota: probe una pila de etapas reales (S-IC/S-II/S-IVB/CSM+LM, masas NASA publicadas) --
+  // el motor la soporta (Fase 2 esta construida), pero con esa fisica simplificada el ascenso
+  // por si solo agota las 4 etapas sin llegar a orbita (el TWR del S-II al encenderse es 0.80,
+  // menos de 1 -- en la realidad el cohete ya lleva velocidad vertical de sobra del S-IC y no
+  // pasa nada, aqui si). Queda sin usar hasta que se reajuste con cuidado.
+  // Cronologia REAL de la mision (Apolo 11, 16-24 julio 1969), en segundos desde el despegue.
+  // Sirve de guia en vivo: el HUD compara tu T+ actual contra estos hitos.
+  milestones: [
+    { t:0, label:'Despegue -- un millon de espectadores lo vieron desde las playas cercanas' },
+    { t:702, label:'Inserción en órbita terrestre a 185x183km (motor a 0%, deja que la órbita te lleve)' },
+    { t:9856, label:'Quema de inyección translunar, 5min47s real (motor a tope, prógrado)' },
+    { t:272990, label:'Quema de inserción en órbita lunar, tras pasar por detras de la Luna (retrógrado)' },
+    { t:369185, label:'Inicio del descenso motorizado -- aqui sonaron las alarmas 1202/1201 del ordenador de a bordo' },
+    { t:369940, label:'Alunizaje — "El águila ha alunizado", con solo 98kg de combustible ya' }
+  ],
+  stages: [
+    { id:'translunar', label:'Rumbo a la Luna',
+      check: s => s.body==="moon",
+      msg:'🌍→🌑 Entras en la esfera de influencia lunar' },
+    { id:'orbita', label:'Orbita lunar',
+      check: s => s.body==="moon" && s.inOrbit,
+      msg:'🛰️ Orbita lunar alcanzada -- Collins paso 48 min por vuelta sin contacto por radio, detras de la Luna' },
+    { id:'alunizaje', label:'Alunizaje',
+      check: s => s.body==="moon" && s.altitude<5 && Math.abs(s.vertSpeed)<3 && s.horizSpeed<5,
+      msg:'🌑 "El aguila ha alunizado" -- Armstrong tomo el control semi-manual al ver que el punto previsto por el ordenador caia en un campo de rocas' }
+  ]
+};
+</script>
+<script src="motor.js"></script>
+</body>
+</html>
