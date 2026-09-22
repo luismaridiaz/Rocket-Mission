@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>🚀 Rocket Sim Pro</title>
+<title>🚀 Rocket Sim Pro — ISS</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
@@ -263,15 +263,7 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
     <div class="status-msg" id="statusMsg"></div>
     <div class="mini-views">
       <div class="mini-view" id="mvFront" style="cursor:pointer"><span class="mv-label">🌍 TIERRA</span><span class="mv-data" id="mvFrontData"></span></div>
-      <div class="mini-view" id="mvBack" style="cursor:pointer"><span class="mv-label">🌑 LUNA</span><span class="mv-data" id="mvBackData"></span></div>
-      <div class="mini-view mv-progress" id="mvProgress">
-        <span class="mv-label">🛰️ TRAVESÍA</span>
-        <div class="pg-track"></div>
-        <div class="pg-earth"></div>
-        <div class="pg-moon"></div>
-        <div class="pg-ship" id="pgShip" style="left:0%"></div>
-        <div class="pg-info" id="pgInfo"></div>
-      </div>
+      <div class="mini-view" id="mvBack" style="cursor:pointer"><span class="mv-label">🛰️ ISS</span><span class="mv-data" id="mvBackData"></span></div>
     </div>
     <div class="g-meter" id="gMeter">
       <svg viewBox="0 0 60 60">
@@ -381,60 +373,41 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
     <p>Vista cenital 2D de todo el sistema solar, con zoom táctil (pellizca) o el deslizador. Los anillos de color alrededor de cada planeta indican si está por encima (azul) o por debajo (naranja) del plano de la eclíptica — con inclinaciones orbitales reales, ya no todos los planetas están en el mismo plano.</p>
 
     <h3 style="color:var(--accent);margin:14px 0 6px;">🎯 Piloto automático de misión: qué es física real y qué no</h3>
-    <p><b>Física real de verdad</b> (pasa por el motor, gasta combustible según la ecuación del cohete): el despegue con giro gravitatorio, la quema de inyección translunar, la inserción en órbita lunar, y el descenso — las cuatro se calculan y ejecutan como quemas reales de motor, con su masa y su combustible.</p>
-    <p><b>Ayudas simplificadas</b> (no gastan combustible del depósito, son ajustes instantáneos de velocidad): las correcciones de rumbo durante el crucero de varios días hacia la Luna, y el empujón final de puntería hacia el perilunio lunar. En una misión real esas correcciones también consumen combustible — aquí no, para que el piloto automático sea fiable sin tener que resolver un problema de navegación mucho más complejo. Es la simplificación más importante de todo el simulador: sin ella, la demostración automática fallaría casi siempre.</p>
+    <p><b>Física real de verdad</b> (pasa por el motor, gasta combustible según la ecuación del cohete): el despegue con giro gravitatorio, la espera hasta el apoastro, y la circularización en el apoastro — las tres son quemas reales, comprobadas con los elementos orbitales de la nave (perigeo, apogeo, excentricidad), no con un simple aviso de "ya estás en órbita".</p>
+    <p><b>Sin acoplamiento</b>: esta es la Fase 1 — que la ISS exista, orbite de verdad, y que tu nave llegue a una órbita real cerca de ella. Acercarte hasta un puerto concreto y acoplar es un problema de navegación bastante más difícil (encuentro orbital, sincronización de fase, aproximación fina), y queda para más adelante.</p>
 
-    <h3 style="color:var(--accent);margin:14px 0 6px;">⛽ Por qué el depósito es un 39% más grande que el real</h3>
-    <p><b>Dato real</b>: el Apolo 11 usó aproximadamente <b>2.730.000 kg</b> de propelente en total, repartidos entre Saturno V, CSM y LM como vehículos separados, cada uno con su propio depósito.</p>
-    <p><b>En este simulador</b>: usamos una única pila de <b>3.800.000 kg</b> — un <b>39% más</b> que la cifra real.</p>
-    <p><b>Por qué</b>: nuestra física es una sola pila de combustible con una sola etapa, no cuatro vehículos con depósitos independientes que se van desprendiendo. Eso hace que el ascenso sea menos eficiente que en la realidad (no hay separación de etapas que aligere el vehículo a mitad de subida), y que las correcciones de rumbo y las maniobras de frenada necesiten más ciclos de los que la aritmética ideal predice. Con la cifra real, la demo se queda sin combustible antes de alcanzar la órbita terrestre — lo hemos comprobado de extremo a extremo, no solo calculado.</p>
-    <p>Los 3.800.000 kg son el presupuesto mínimo que hace que la misión completa sea alcanzable <b>en este motor simplificado</b>. No es la cifra real. Es la cifra que la simulación necesita para no fallar, y por eso está declarada aquí en el manual en vez de escondida.</p>
-    <p style="margin-top:10px;"><b>⏱️ Duración del aparcamiento en LEO y posición de la Luna:</b> el piloto entra en TLI tras una órbita corta de estabilización, no las 1,5 vueltas reales del Apolo 11, y coloca la Luna en una posición simplificada (alineada al inicio), no en su cuarto creciente del 16-jul-1969. Las dos cosas están conectadas: la TLI usa una transferencia de Hohmann <i>a la distancia</i> de la Luna, no <i>a la Luna</i>. Corregir cualquiera de las dos rompe la calibración de combustible de la quema translunar — probado de extremo a extremo, no solo calculado. Hacerlo bien requeriría un solver de Lambert, recalibrar el lanzamiento y rehacer el perfil de ascenso: una reconstrucción entera, no un ajuste.</p>
-    <p style="margin-top:10px;"><b>🚀 Separación de etapas y módulo lunar:</b> el modelo 3D muestra la S-IC y la S-II cayendo al salir de órbita terrestre, la S-IVB al llegar a la Luna, y las patas del módulo lunar apareciendo entonces. Es pura decoración — por debajo sigue habiendo un único depósito de combustible que nunca se separa de verdad. Los momentos de caída están atados a las <i>fases</i> del piloto automático, no al reloj de la misión: como nuestra simulación no tarda lo mismo que la real (el TLI aquí llega mucho antes que a las 2h 44m históricas), usar los segundos reales haría que una etapa cayera en mitad del crucero hacia la Luna. El Columbia (CSM) no se queda orbitando por separado — eso exigiría simular dos naves a la vez, y no está hecho.</p>
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🛰️ Por qué la inclinación de la ISS no es la real</h3>
+    <p><b>Dato real</b>: la ISS orbita inclinada 51,64° respecto al ecuador — el compromiso entre lo que Rusia y EEUU podían lanzar cada uno desde sus propios cosmódromos.</p>
+    <p><b>En este simulador</b>: la ISS orbita a 5,2°, la misma latitud de Kourou.</p>
+    <p><b>Por qué</b>: es el mismo compromiso que ya se hace con el plano orbital de la Luna en la misión Apolo 11 — despegar hacia el este puro desde Kourou solo puede alcanzar órbitas de baja inclinación sin gastar combustible extra en un cambio de plano. Ponerla a su inclinación real la dejaría fuera de alcance con esta física, igual que le pasaría a la Luna.</p>
+    <p>El resto sí es real: altitud media de 408 km, y el periodo orbital sale de la física, no de un número impuesto — depende de la órbita que tu nave realmente consiga.</p>
 
-    <h3 style="color:var(--accent);margin:14px 0 6px;">🗺️ Las fases de la demostración automática, de principio a fin</h3>
-    <p><b>1. Ascenso</b> — motor a tope, giro gravitatorio real hacia el este: recto los primeros 8s, luego inclinando hasta 83°. Pasa a la siguiente fase en cuanto detecta órbita alcanzada.</p>
-    <p><b>2. Órbita terrestre</b> — motor apagado, 60s manteniendo rumbo, mientras se calcula la velocidad exacta que hace falta para la quema translunar.</p>
-    <p><b>3. Quema translunar</b> — motor a tope, prógrado, hasta alcanzar esa velocidad calculada (ecuación vis-viva).</p>
-    <p><b>4. Crucero a la Luna</b> — motor apagado casi todo el tiempo; cada 6h simuladas corrige el rumbo si hace falta. Es la fase más rápida de ver, con el tiempo acelerado al máximo.</p>
-    <p><b>5. Aproximación e inserción lunar</b> — un empujón de puntería hacia un perilunio de 200km, caída libre vigilada, y una frenada real justo en el punto más cercano a la Luna para quedar en órbita baja.</p>
-    <p><b>6. Descenso</b> — gira hacia atrás (retrógrado), frena de verdad hasta parar en seco en esa dirección, y luego desciende suave modulando el gas contra la gravedad real, con un frenado horizontal continuo para no tener que girar más veces.</p>
-    <p><b>7. Alunizaje</b> — fin de la demostración. Puedes seguir pilotando a mano desde ahí.</p>
-    <p style="color:var(--text-secondary);font-style:italic;">Pendiente: el regreso a la Tierra (ascenso lunar, encuentro y acoplamiento, inyección trans-Tierra, reentrada) no está construido todavía — se añadirá más adelante, con su propio presupuesto de combustible calculado aparte.</p>
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🏗️ El modelo de la estación</h3>
+    <p>Viga de 11 segmentos, 8 pares de paneles solares con retícula de células, 12 módulos presurizados (Zarya, Unity, Zvezda, Poisk, Rassvet, Nauka del segmento ruso; Destiny, Harmony, Columbus, Kibo, Tranquility, Cupola del segmento internacional), 6 puertos de acoplamiento (2 rusos en naranja, 4 internacionales en verde — brillan, pero todavía no se pueden usar), el brazo robótico Canadarm2, y el módulo inflable BEAM. Falta Pirs, el módulo ruso que se desacopló y se destruyó en 2021 a propósito, para dejar sitio a Nauka.</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🗺️ Las fases de la demostración automática</h3>
+    <p><b>1. Ascenso</b> — motor a tope, giro gravitatorio real hacia el este: recto los primeros 8s, luego inclinando hasta 83°. Corta al superar el 102% de la velocidad circular local.</p>
+    <p><b>2. Coast hasta el apoastro</b> — motor apagado, caída libre hasta el punto más alto de la trayectoria.</p>
+    <p><b>3. Circularización</b> — motor prógrado en el apoastro, hasta conseguir un perigeo real por encima de ~347km (85% de la altitud real de la ISS).</p>
+    <p><b>4. En órbita</b> — fin de la demostración automática. La ISS debería verse cerca, orbitando de verdad. Puedes seguir pilotando a mano desde ahí para acercarte más.</p>
   </div>
 </div>
 
+<script src="iss.js"></script>
 <script>
 window.MISSION_CONFIG = {
-  title: 'Apolo 11',
-  briefing: 'Lleva a la tripulacion a la Luna, entra en orbita lunar y desciende hasta posarte suavemente en el Mar de la Tranquilidad -- como hizo el modulo Eagle el 20 de julio de 1969. Esta nave tiene la capacidad real combinada del Saturno V y el modulo lunar (con el deposito estandar del simulador ni siquiera llegarias con margen a la Luna). Mira el panel de arriba: te dice el siguiente hito real y cuando tocaba, para que sepas que boton tocar y cuando. Dato real: el cohete de verdad despego con un azimut de 72,058 grados (no hacia el este puro); aqui despegamos hacia el este exacto a proposito, porque es la unica forma de que nuestro modelo simplificado del plano orbital de la Luna sea alcanzable sin gastar combustible extra en un cambio de plano.',
-  fuelMass: 3800000,
-  maxThrust: 82659060, // validado de extremo a extremo: despegue+TLI+orbita lunar+descenso completos, con margen real de sobra (no solo teorico)
-  // Nota: probe una pila de etapas reales (S-IC/S-II/S-IVB/CSM+LM, masas NASA publicadas) --
-  // el motor la soporta (Fase 2 esta construida), pero con esa fisica simplificada el ascenso
-  // por si solo agota las 4 etapas sin llegar a orbita (el TWR del S-II al encenderse es 0.80,
-  // menos de 1 -- en la realidad el cohete ya lleva velocidad vertical de sobra del S-IC y no
-  // pasa nada, aqui si). Queda sin usar hasta que se reajuste con cuidado.
-  // Cronologia REAL de la mision (Apolo 11, 16-24 julio 1969), en segundos desde el despegue.
-  // Sirve de guia en vivo: el HUD compara tu T+ actual contra estos hitos.
-  milestones: [
-    { t:0, label:'Despegue -- un millon de espectadores lo vieron desde las playas cercanas' },
-    { t:702, label:'Inserción en órbita terrestre a 185x183km (motor a 0%, deja que la órbita te lleve)' },
-    { t:9856, label:'Quema de inyección translunar, 5min47s real (motor a tope, prógrado)' },
-    { t:272990, label:'Quema de inserción en órbita lunar, tras pasar por detras de la Luna (retrógrado)' },
-    { t:369185, label:'Inicio del descenso motorizado -- aqui sonaron las alarmas 1202/1201 del ordenador de a bordo' },
-    { t:369940, label:'Alunizaje — "El águila ha alunizado", con solo 98kg de combustible ya' }
-  ],
+  type: 'iss',
+  title: 'Estación Espacial Internacional',
+  briefing: 'Alcanza una órbita terrestre real cerca de la Estación Espacial Internacional, a 408 km de altitud — la misma altura a la que orbita de verdad. Sin acoplamiento todavía: esta demo termina al lograr una órbita estable cerca de ella, volando en formación. Dato real: la ISS orbita inclinada 51,64° respecto al ecuador; aquí usa 5,2° (la latitud de Kourou) para que sea alcanzable sin gastar combustible en un cambio de plano — el mismo compromiso que ya se hace con la Luna en la misión Apolo 11.',
+  physicsStack: [
+    { id:'iss-ship', dryMass:7500, fuelMass:950000, maxFuelMass:950000, thrust:20664765, isp:450 }
+  ], // probado de extremo a extremo: ascenso + coast a apoastro + circularizacion real
+     // (perigeo 351km confirmado con elementos orbitales) + orbita cerca de la ISS, con
+     // ~11% de margen de combustible.
   stages: [
-    { id:'translunar', label:'Rumbo a la Luna',
-      check: s => s.body==="moon",
-      msg:'🌍→🌑 Entras en la esfera de influencia lunar' },
-    { id:'orbita', label:'Orbita lunar',
-      check: s => s.body==="moon" && s.inOrbit,
-      msg:'🛰️ Orbita lunar alcanzada -- Collins paso 48 min por vuelta sin contacto por radio, detras de la Luna' },
-    { id:'alunizaje', label:'Alunizaje',
-      check: s => s.body==="moon" && s.altitude<5 && Math.abs(s.vertSpeed)<3 && s.horizSpeed<5,
-      msg:'🌑 "El aguila ha alunizado" -- Armstrong tomo el control semi-manual al ver que el punto previsto por el ordenador caia en un campo de rocas' }
+    { id:'orbita', label:'En órbita',
+      check: s => s.altitude>300000,
+      msg:'🛰️ En órbita real, a la altura de la ISS' }
   ]
 };
 </script>

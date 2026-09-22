@@ -141,7 +141,7 @@ function positionOf(name,t){
 // parent (que cuerpo orbita), altitude (altura sobre la superficie), y phase0 (angulo de partida).
 // El resto (periodo, velocidad orbital, deteccion de acoplamiento) es generico.
 const DOCKING_TARGETS = [
-  { id:'plataforma_leo', name:'Plataforma Orbital (demo)', parent:'earth', altitude:400000, phase0:1.0 }
+  { id:'iss', name:'Estación Espacial Internacional', parent:'earth', altitude:408000, phase0:1.0 }
 ];
 const DOCK_MAX_DIST = 15; // metros
 const DOCK_MAX_SPEED = 0.3; // m/s
@@ -643,40 +643,63 @@ class ToastSystem {
 
 /* ---------- TEXTURAS PROCEDURALES ---------- */
 function makeEarthTexture(){
-  const c=document.createElement('canvas'); c.width=1024; c.height=512;
+  const W=2048,H=1024;
+  const c=document.createElement('canvas'); c.width=W; c.height=H;
   const ctx=c.getContext('2d');
-  ctx.fillStyle='#0d3d66'; ctx.fillRect(0,0,1024,512);
-  const grad=ctx.createLinearGradient(0,0,0,512);
-  grad.addColorStop(0,'#0a2a4a'); grad.addColorStop(0.5,'#0f4a7a'); grad.addColorStop(1,'#0a2a4a');
-  ctx.fillStyle=grad; ctx.fillRect(0,0,1024,512);
-  function blob(cx,cy,rx,ry,color){
+  // Oceano: degradado azul mas profundo en polos, mas claro en el ecuador (como el real)
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#0a1f3d'); grad.addColorStop(0.5,'#1c5a8a'); grad.addColorStop(1,'#0a1f3d');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+
+  // lon/lat -> pixel (equirectangular)
+  const px=(lon)=>(lon+180)/360*W, py=(lat)=>(90-lat)/180*H;
+  function land(points,color){
     ctx.fillStyle=color;
     ctx.beginPath();
-    const pts=14;
-    for(let i=0;i<=pts;i++){
-      const a=(i/pts)*Math.PI*2;
-      const jitter=0.75+Math.random()*0.5;
-      const x=cx+Math.cos(a)*rx*jitter;
-      const y=cy+Math.sin(a)*ry*jitter;
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
+    points.forEach(([lon,lat],i)=>{ const x=px(lon), y=py(lat); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
     ctx.closePath(); ctx.fill();
   }
-  const green='#3d6b35', tan='#8a7a4f', darkgreen='#2d5028';
-  blob(180,190,90,120,green); blob(200,300,70,90,darkgreen);
-  blob(330,150,110,60,tan); blob(420,120,60,50,green);
-  blob(560,140,140,70,tan); blob(600,260,90,110,green);
-  blob(520,320,60,50,darkgreen);
-  blob(780,150,120,90,tan); blob(830,260,70,80,green);
-  blob(870,90,80,50,tan);
-  blob(900,380,100,60,green);
-  // detalle extra: manchas mas pequenas para romper la silueta lisa de los blobs grandes
-  for (let i=0;i<40;i++){
-    const cx=Math.random()*1024, cy=90+Math.random()*350;
-    blob(cx,cy,8+Math.random()*20,6+Math.random()*15, Math.random()>0.5?green:tan);
+  const green='#3f6b3a', greenDark='#2c4f28', tan='#9c8654', desert='#b89968';
+
+  // Africa (silueta simplificada pero reconocible)
+  land([[-17,15],[10,32],[33,31],[43,12],[51,10],[42,-2],[40,-16],[35,-25],[20,-35],[13,-18],[9,4],[-6,5],[-17,15]], green);
+  land([[15,25],[33,29],[30,15],[20,18],[15,25]], desert); // Sahara
+  // Eurasia (Europa+Asia como una gran masa continua)
+  land([[-10,36],[2,44],[20,45],[40,45],[60,50],[75,52],[95,55],[130,60],[145,55],[140,45],[125,40],[110,25],[100,10],[80,10],[70,20],[60,25],[45,15],[35,30],[27,35],[15,38],[-10,36]], green);
+  land([[60,55],[75,60],[95,65],[130,68],[150,65],[160,60],[140,55],[110,58],[80,58],[60,55]], greenDark); // Siberia
+  land([[65,28],[80,30],[90,25],[85,18],[72,18],[65,28]], desert); // Oriente Medio/Arabia
+  // India
+  land([[68,24],[78,28],[88,22],[80,10],[73,15],[68,24]], green);
+  // Sudeste asiatico / Indonesia (islas pequenas)
+  land([[95,8],[105,10],[115,5],[110,-5],[98,0],[95,8]], greenDark);
+  // Norteamerica
+  land([[-165,68],[-150,70],[-120,72],[-95,68],[-80,62],[-70,50],[-60,45],[-75,35],[-82,25],[-97,26],[-105,32],[-115,32],[-124,42],[-124,55],[-140,60],[-165,68]], green);
+  land([[-110,50],[-95,55],[-85,50],[-95,42],[-105,42],[-110,50]], tan); // llanuras centrales
+  // Centroamerica
+  land([[-105,20],[-95,18],[-88,15],[-83,9],[-77,8],[-83,12],[-92,15],[-105,20]], greenDark);
+  // Sudamerica
+  land([[-80,10],[-70,10],[-60,5],[-50,0],[-35,-8],[-38,-15],[-45,-23],[-58,-35],[-68,-45],[-73,-40],[-70,-20],[-78,-5],[-80,10]], green);
+  land([[-60,-15],[-50,-18],[-58,-30],[-65,-25],[-60,-15]], tan); // interior arido
+  // Australia
+  land([[113,-22],[125,-14],[135,-12],[145,-16],[153,-25],[150,-35],[140,-38],[130,-32],[115,-33],[113,-22]], desert);
+  land([[145,-38],[147,-42],[144,-43],[143,-39],[145,-38]], green); // Tasmania
+
+  // Ruido de superficie sutil para que no se vea plano (variacion de tono, no forma)
+  const noiseCanvas=document.createElement('canvas'); noiseCanvas.width=256; noiseCanvas.height=128;
+  const nctx=noiseCanvas.getContext('2d');
+  const imgData=nctx.createImageData(256,128);
+  for (let i=0;i<imgData.data.length;i+=4){
+    const v=Math.random()*255;
+    imgData.data[i]=v; imgData.data[i+1]=v; imgData.data[i+2]=v; imgData.data[i+3]=14;
   }
+  nctx.putImageData(imgData,0,0);
+  ctx.globalCompositeOperation='overlay';
+  ctx.drawImage(noiseCanvas,0,0,W,H);
+  ctx.globalCompositeOperation='source-over';
+
+  // Casquetes polares
   ctx.fillStyle='#eef4f8';
-  ctx.fillRect(0,0,1024,22); ctx.fillRect(0,490,1024,22);
+  ctx.fillRect(0,0,W,H*0.045); ctx.fillRect(0,H*0.955,W,H*0.045);
   return new THREE.CanvasTexture(c);
 }
 function makeCloudsTexture(){
@@ -772,14 +795,28 @@ function makeIceTexture(baseColor){
   return new THREE.CanvasTexture(c);
 }
 function makeMoonTexture(){
-  const c=document.createElement('canvas'); c.width=512; c.height=256;
+  const c=document.createElement('canvas'); c.width=1024; c.height=512;
   const ctx=c.getContext('2d');
-  ctx.fillStyle='#b8b2a8'; ctx.fillRect(0,0,512,256);
-  for(let i=0;i<70;i++){
-    const x=Math.random()*512, y=Math.random()*256, r=4+Math.random()*22;
-    ctx.fillStyle=Math.random()>0.5?'rgba(120,115,108,0.5)':'rgba(200,195,188,0.4)';
-    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#c9c3b8'; ctx.fillRect(0,0,1024,512);
+  // Mares (planicies basalticas oscuras) -- manchas grandes e irregulares, como las reales
+  for (let i=0;i<9;i++){
+    const x=Math.random()*1024, y=Math.random()*512, r=40+Math.random()*90;
+    const grad=ctx.createRadialGradient(x,y,0,x,y,r);
+    grad.addColorStop(0,'rgba(90,86,80,0.75)'); grad.addColorStop(1,'rgba(90,86,80,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath(); ctx.ellipse(x,y,r,r*(0.6+Math.random()*0.4),Math.random()*Math.PI,0,Math.PI*2); ctx.fill();
   }
+  // Crateres con borde claro y sombra oscura, dos tamaños (grandes escasos, pequenos abundantes)
+  function crater(x,y,r){
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle='rgba(70,66,60,0.55)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x-r*0.15,y-r*0.15,r*0.85,0,Math.PI*2);
+    ctx.fillStyle='rgba(180,175,165,0.5)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x,y,r*1.15,0,Math.PI*2);
+    ctx.strokeStyle='rgba(140,135,125,0.4)'; ctx.lineWidth=Math.max(1,r*0.08); ctx.stroke();
+  }
+  for (let i=0;i<10;i++) crater(Math.random()*1024,Math.random()*512,18+Math.random()*28);
+  for (let i=0;i<140;i++) crater(Math.random()*1024,Math.random()*512,2+Math.random()*7);
   return new THREE.CanvasTexture(c);
 }
 
@@ -823,7 +860,8 @@ class RocketRenderer3D {
     this.particlePoints=new THREE.Points(this.particleSystem,this.particleMaterial);
     this.scene.add(this.particlePoints);
 
-    this.trailLine=null; this.viewMode='external';
+    this.trailLine=null; this.viewMode='external'; // 'external' | 'cockpit' | 'cinematic'
+    this._cinematicCamPos=new THREE.Vector3(); this._cinematicLookAt=new THREE.Vector3(); this._cinematicInit=false;
 
     this.setupMiniViews();
 
@@ -911,8 +949,16 @@ class RocketRenderer3D {
     this.atmosphere=new THREE.Mesh(new THREE.SphereGeometry(SOLAR_BODIES.earth.radius*1.025,48,48),atmoMat);
     this.scene.add(this.atmosphere);
 
-    // Luna
+    // Luna: igual que la Tierra, intenta la textura real (NASA LROC) y si el CORS la bloquea
+    // cae sola a la procedural sin romper nada.
     const moonMat=new THREE.MeshStandardMaterial({map:makeMoonTexture(),roughness:0.95,metalness:0.02});
+    const realMoonLoader=new THREE.TextureLoader();
+    realMoonLoader.load(
+      'https://s3-us-west-2.amazonaws.com/s.cdpn.io/17271/lroc_color_poles_1k.jpg',
+      (tex)=>{ moonMat.map=tex; moonMat.needsUpdate=true; },
+      undefined,
+      ()=>{ console.warn('Textura real de la Luna bloqueada, usando la procedural.'); }
+    );
     this.moon=new THREE.Mesh(new THREE.SphereGeometry(SOLAR_BODIES.moon.radius,48,48),moonMat);
     this.scene.add(this.moon); this.bodyMeshes.moon=this.moon;
 
@@ -964,18 +1010,14 @@ class RocketRenderer3D {
     this.bodyMeshes.halley=new THREE.Mesh(new THREE.SphereGeometry(5000000,12,12),halleyMat);
     this.scene.add(this.bodyMeshes.halley);
 
-    // Plataforma de acoplamiento (demo): cuerpo cilindrico + panel solar + anillo del puerto
-    this.dockingTargetGroup=new THREE.Group();
-    const dtBody=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.5,4,16),new THREE.MeshStandardMaterial({color:0xaaaaaa,metalness:0.7,roughness:0.4}));
-    this.dockingTargetGroup.add(dtBody);
-    const panelMat=new THREE.MeshStandardMaterial({color:0x2244aa,metalness:0.3,roughness:0.6,side:THREE.DoubleSide});
-    const panelL=new THREE.Mesh(new THREE.BoxGeometry(8,0.1,3),panelMat); panelL.position.x=-5.5;
-    const panelR=new THREE.Mesh(new THREE.BoxGeometry(8,0.1,3),panelMat); panelR.position.x=5.5;
-    this.dockingTargetGroup.add(panelL); this.dockingTargetGroup.add(panelR);
-    const portRing=new THREE.Mesh(new THREE.TorusGeometry(1.6,0.15,8,20),new THREE.MeshBasicMaterial({color:0x00ff88}));
-    portRing.rotation.x=Math.PI/2; portRing.position.y=2.2;
-    this.dockingTargetGroup.add(portRing);
-    this.scene.add(this.dockingTargetGroup);
+    // Objetivo de acoplamiento del sandbox: la ISS real (mismo modelo que la misión dedicada).
+    // Si esta pagina ya tiene su propia ISS (mision 'iss'), no se duplica aqui.
+    const isDedicatedIssMission = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss';
+    if (!isDedicatedIssMission){
+      this.dockingTargetGroup=new THREE.Group();
+      this.buildISS(this.dockingTargetGroup);
+      this.scene.add(this.dockingTargetGroup);
+    }
 
     // Cinturon de Kuiper: anillo de particulas decorativo entre ~35 y ~48 UA
     const kCount=3000;
@@ -990,6 +1032,154 @@ class RocketRenderer3D {
     kGeo.setAttribute('position',new THREE.BufferAttribute(kPos,3));
     this.kuiperBelt=new THREE.Points(kGeo,new THREE.PointsMaterial({color:0x8a7860,size:2500000,transparent:true,opacity:0.75}));
     this.scene.add(this.kuiperBelt);
+
+    // ---- ISS: solo en la mision dedicada a visitarla, no en Apolo/sandbox/Gagarin ----
+    if (typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss'){
+      this.issGroup=new THREE.Group();
+      this.buildISS(this.issGroup);
+      this.scene.add(this.issGroup);
+    }
+  }
+  // Modelo detallado de la ISS: viga de 11 segmentos, 8 pares de paneles solares,
+  // 12 modulos presurizados, 6 puertos de acoplamiento (2 rusos, 4 internacionales) y
+  // el Canadarm2. Longitud del cluster de modulos comprimida a mano un 20% respecto al
+  // primer calculo (192m) para acercarla a la real (~150-160m) -- el propio diseño ya
+  // avisaba de que probablemente haria falta este ajuste.
+  buildISS(group){
+    const U=1;
+    const white=new THREE.MeshStandardMaterial({color:0xe8e8e0,roughness:0.6,metalness:0.3});
+    const offWhite=new THREE.MeshStandardMaterial({color:0xd0d0c8,roughness:0.7,metalness:0.2});
+    const gold=new THREE.MeshStandardMaterial({color:0xc9a15a,roughness:0.5,metalness:0.7});
+    const silver=new THREE.MeshStandardMaterial({color:0xb0b0b8,roughness:0.35,metalness:0.85});
+    const dark=new THREE.MeshStandardMaterial({color:0x2a2a30,roughness:0.4,metalness:0.6});
+    const panel=new THREE.MeshStandardMaterial({color:0x0f1a33,roughness:0.4,metalness:0.5,side:THREE.DoubleSide});
+    const panelLine=new THREE.MeshBasicMaterial({color:0x2a4a80,side:THREE.DoubleSide});
+    const glowRing=new THREE.MeshBasicMaterial({color:0x00ff88,transparent:true,opacity:0.85});
+    const glowRus=new THREE.MeshBasicMaterial({color:0xff8800,transparent:true,opacity:0.85});
+    const ZC=0.8; // factor de compresion de longitud del cluster de modulos
+
+    // ---- Viga (truss), 11 segmentos ----
+    const trussGroup=new THREE.Group();
+    for (let i=0;i<11;i++){
+      const xPos=(i-5)*3.3*U;
+      const seg=new THREE.Group();
+      const corners=[{y:0.5,z:0.5},{y:0.5,z:-0.5},{y:-0.5,z:0.5},{y:-0.5,z:-0.5}];
+      for (const c of corners){
+        const beam=new THREE.Mesh(new THREE.BoxGeometry(3.3*U,0.08*U,0.08*U),silver);
+        beam.position.set(0,c.y*U,c.z*U); seg.add(beam);
+      }
+      if (i%2===0){
+        const diag=new THREE.Mesh(new THREE.BoxGeometry(0.06*U,1.4*U,0.06*U),silver);
+        diag.rotation.z=Math.PI/4; diag.position.set(0,0,0.5*U); seg.add(diag);
+      }
+      seg.position.set(xPos,0,0); trussGroup.add(seg);
+    }
+    const s0=new THREE.Mesh(new THREE.BoxGeometry(2.5*U,1.2*U,1.2*U),silver);
+    trussGroup.add(s0);
+    group.add(trussGroup);
+
+    // ---- Paneles solares: 8 pares, con reticula de celulas ----
+    const panelPositions=[-15.5,-11.5,-7.5,-3.5,3.5,7.5,11.5,15.5];
+    for (const xp of panelPositions){
+      const xPos=xp*U;
+      for (const sign of [1,-1]){
+        for (let half=0; half<2; half++){
+          const panelMesh=new THREE.Mesh(new THREE.BoxGeometry(5.5*U,0.04*U,3.8*U),panel);
+          panelMesh.position.set(xPos, sign*(2.5+half*4.0)*U, 0);
+          group.add(panelMesh);
+          for (let l=0;l<5;l++){
+            const line=new THREE.Mesh(new THREE.BoxGeometry(5.5*U,0.045*U,0.02*U),panelLine);
+            line.position.set(xPos, sign*(2.5+half*4.0)*U, (l-2)*0.75*U);
+            group.add(line);
+          }
+        }
+      }
+      const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.08*U,0.08*U,3.5*U,8),silver);
+      mast.position.set(xPos,0,0); group.add(mast);
+    }
+
+    // ---- Radiadores: 3 principales + 3 secundarios ----
+    for (let i=0;i<3;i++){
+      const rad=new THREE.Mesh(new THREE.BoxGeometry(3.5*U,3*U,0.06*U),offWhite);
+      rad.position.set(-3*U+i*3*U,-3.5*U,0); group.add(rad);
+    }
+    for (let i=0;i<3;i++){
+      const rad=new THREE.Mesh(new THREE.BoxGeometry(2.5*U,2*U,0.06*U),offWhite);
+      rad.position.set(0,3.5*U,(-7+i*1.5)*U*ZC); group.add(rad);
+    }
+
+    // ---- Modulos presurizados: 12, distancias Z comprimidas ----
+    const modules=[
+      {name:'Zarya',len:12.6,rad:4.1,z:-22,mat:gold,cyl:true},
+      {name:'Unity',len:5.5,rad:4.6,z:-16,mat:silver,hex:true},
+      {name:'Zvezda',len:13.1,rad:4.35,z:-10,mat:gold,cyl:true},
+      {name:'Poisk',len:4.0,rad:2.5,z:-4,mat:gold,cyl:true,small:true},
+      {name:'Rassvet',len:6.0,rad:2.5,z:-3,mat:gold,cyl:true,small:true},
+      {name:'Nauka',len:13.0,rad:4.25,z:2,mat:gold,cyl:true},
+      {name:'Destiny',len:8.5,rad:4.2,z:9,mat:white,cyl:true},
+      {name:'Harmony',len:7.2,rad:4.4,z:15,mat:white,hex:true},
+      {name:'Columbus',len:6.9,rad:4.5,z:21,mat:white,cyl:true},
+      {name:'Kibo',len:11.2,rad:4.4,z:27,mat:white,cyl:true},
+      {name:'Tranquility',len:7.0,rad:4.5,z:33,mat:white,cyl:true},
+      {name:'Cupola',len:1.5,rad:2.0,z:36,mat:dark,cyl:true,small:true}
+    ];
+    const U_mod=1/3;
+    this.issModuleMeshes={};
+    for (const m of modules){
+      const rad=m.rad*U_mod, len=m.len*U_mod;
+      const geo = m.hex ? new THREE.CylinderGeometry(rad,rad,len,6) : new THREE.CylinderGeometry(rad,rad,len,16);
+      const mesh=new THREE.Mesh(geo,m.mat);
+      mesh.rotation.x=Math.PI/2;
+      mesh.position.set(0,0,m.z*U*ZC);
+      group.add(mesh);
+      this.issModuleMeshes[m.name]=mesh;
+      for (const zOff of [-len/2,len/2]){
+        const ring=new THREE.Mesh(new THREE.TorusGeometry(rad*1.02,0.06*U,6,24),silver);
+        ring.rotation.y=Math.PI/2; ring.rotation.x=Math.PI/2;
+        ring.position.set(0,0,m.z*U*ZC+zOff*ZC);
+        group.add(ring);
+      }
+    }
+
+    // ---- Puertos de acoplamiento: 2 rusos (naranja), 4 internacionales (verde) ----
+    const ports=[
+      {pos:{x:0,y:0,z:-28*U*ZC},type:'ruso',id:'Zvezda-aft'},
+      {pos:{x:0,y:2.5*U,z:-4*U*ZC},type:'ruso',id:'Poisk-zenith'},
+      {pos:{x:4*U,y:0,z:15*U*ZC},type:'americano',id:'Harmony-forward'},
+      {pos:{x:0,y:4.5*U,z:15*U*ZC},type:'americano',id:'Harmony-zenith'},
+      {pos:{x:0,y:-4.5*U,z:15*U*ZC},type:'americano',id:'Harmony-nadir'},
+      {pos:{x:4*U,y:0,z:-16*U*ZC},type:'americano',id:'Unity-nadir'}
+    ];
+    this.issPorts=[];
+    for (const p of ports){
+      const ringMat = p.type==='ruso' ? glowRus : glowRing;
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(0.55*U,0.07*U,8,20),ringMat);
+      ring.rotation.y=Math.PI/2;
+      ring.position.set(p.pos.x,p.pos.y,p.pos.z);
+      group.add(ring);
+      this.issPorts.push({ id:p.id, type:p.type, localPos:new THREE.Vector3(p.pos.x,p.pos.y,p.pos.z), worldPos:new THREE.Vector3() });
+    }
+
+    // ---- Canadarm2 ----
+    const armGroup=new THREE.Group();
+    armGroup.position.set(0,0.8*U,0);
+    const armBase=new THREE.Mesh(new THREE.CylinderGeometry(0.35*U,0.35*U,0.6*U,12),white);
+    armGroup.add(armBase);
+    const armSeg1=new THREE.Mesh(new THREE.CylinderGeometry(0.18*U,0.18*U,2.5*U,10),white);
+    armSeg1.position.set(0,1.5*U,0); armGroup.add(armSeg1);
+    const elbow=new THREE.Mesh(new THREE.SphereGeometry(0.25*U,12,12),silver);
+    elbow.position.set(0,2.9*U,0); armGroup.add(elbow);
+    const armSeg2=new THREE.Mesh(new THREE.CylinderGeometry(0.16*U,0.16*U,2.5*U,10),white);
+    armSeg2.position.set(0.8*U,4.0*U,0); armSeg2.rotation.z=Math.PI/4; armGroup.add(armSeg2);
+    const endEff=new THREE.Mesh(new THREE.CylinderGeometry(0.22*U,0.28*U,0.5*U,10),silver);
+    endEff.position.set(1.7*U,4.9*U,0); armGroup.add(endEff);
+    group.add(armGroup);
+
+    // ---- BEAM (modulo inflable) ----
+    const beam=new THREE.Mesh(new THREE.SphereGeometry(0.9*U,12,12),offWhite);
+    beam.position.set(0,0,24*U*ZC);
+    beam.scale.set(1,0.9,1.1);
+    group.add(beam);
   }
   buildRocket(){
     while (this.rocketGroup.children.length) this.rocketGroup.remove(this.rocketGroup.children[0]);
@@ -1161,14 +1351,45 @@ class RocketRenderer3D {
   updateStageVisibility(missionPhase){
     if (!missionPhase){ // sandbox sin piloto automatico: cohete completo, como siempre
       this.sICGroup.visible=true; this.sIIGroup.visible=true; this.sIVBGroup.visible=true; this.lmLegsGroup.visible=false;
+      this.sICGroup.position.set(0,0,0); this.sICGroup.rotation.set(0,0,0);
+      this.sIIGroup.position.set(0,0,0); this.sIIGroup.rotation.set(0,0,0);
+      this._fallingStages=[];
       return;
     }
-    const leftEarthOrbit = !['ascent'].includes(missionPhase);
+    if (!this._fallingStages) this._fallingStages=[];
+    const isAscent = missionPhase==='ascent';
     const arrivedAtMoon = ['loi_burn','descent','done'].includes(missionPhase);
-    this.sICGroup.visible = !leftEarthOrbit;
-    this.sIIGroup.visible = !leftEarthOrbit;
-    this.sIVBGroup.visible = leftEarthOrbit && !arrivedAtMoon;
+    const wantSIC = isAscent, wantSII = isAscent, wantSIVB = !arrivedAtMoon;
+    const alreadyFalling=(g)=>this._fallingStages.some(fs=>fs.group===g);
+    // Al pasar de visible a oculta, no se apaga de golpe: se marca para que
+    // updateFallingStages() la haga alejarse y girar durante unos segundos primero.
+    // alreadyFalling() evita añadirla de nuevo en cada fotograma mientras cae.
+    if (this.sICGroup.visible && !wantSIC && !alreadyFalling(this.sICGroup)) this._fallingStages.push({group:this.sICGroup, age:0});
+    if (this.sIIGroup.visible && !wantSII && !alreadyFalling(this.sIIGroup)) this._fallingStages.push({group:this.sIIGroup, age:0});
+    if (this.sIVBGroup.visible && !wantSIVB && !alreadyFalling(this.sIVBGroup)) this._fallingStages.push({group:this.sIVBGroup, age:0});
+    if (wantSIC) this.sICGroup.visible=true;
+    if (wantSII) this.sIIGroup.visible=true;
+    if (wantSIVB) this.sIVBGroup.visible=true;
     this.lmLegsGroup.visible = arrivedAtMoon;
+  }
+  // Anima las etapas descartadas: se quedan atras (se alejan del morro de la nave) y giran
+  // lentamente, durante 3s, antes de desaparecer del todo. Puramente decorativo.
+  updateFallingStages(dt){
+    if (!this._fallingStages || !this._fallingStages.length) return;
+    const DURATION=3;
+    for (let i=this._fallingStages.length-1;i>=0;i--){
+      const fs=this._fallingStages[i];
+      fs.age+=dt;
+      fs.group.position.y -= dt*3.5;
+      fs.group.position.z -= dt*1.5;
+      fs.group.rotation.x += dt*1.8;
+      fs.group.rotation.z += dt*0.9;
+      if (fs.age>=DURATION){
+        fs.group.visible=false;
+        fs.group.position.set(0,0,0); fs.group.rotation.set(0,0,0);
+        this._fallingStages.splice(i,1);
+      }
+    }
   }
   setupMiniViews(){
     this.frontCam=new THREE.PerspectiveCamera(60,150/110,0.5,9000000000000);
@@ -1232,7 +1453,7 @@ class RocketRenderer3D {
   update(state, frameDt, missionPhase){
     const isGagarin = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='gagarin';
     if (isGagarin) this.updateVostokVisibility(missionPhase);
-    else this.updateStageVisibility(missionPhase);
+    else { this.updateStageVisibility(missionPhase); this.updateFallingStages(Math.min(0.1,frameDt||0.016)); }
     const shipAbs = new THREE.Vector3(state.shipAbs.x, state.shipAbs.y, state.shipAbs.z);
     // origen flotante: cada cuerpo se coloca en su posicion real MENOS la posicion real de la nave,
     // asi la nave siempre esta cerca de (0,0,0) sin importar si estamos junto a la Tierra o cerca de Pluton.
@@ -1240,6 +1461,21 @@ class RocketRenderer3D {
       const bp = state.bodies[name];
       if (!bp) continue;
       this.bodyMeshes[name].position.set(bp.x-shipAbs.x, bp.y-shipAbs.y, bp.z-shipAbs.z);
+    }
+    // ---- ISS: posicion orbital real, orientada con el nadir hacia la Tierra ----
+    if (this.issGroup && typeof ISS!=='undefined' && typeof orbitalObjectPosition==='function' && state.bodies.earth){
+      const issAbs = orbitalObjectPosition(ISS, state.time);
+      this.issGroup.position.set(issAbs.x-shipAbs.x, issAbs.y-shipAbs.y, issAbs.z-shipAbs.z);
+      const earthRel = new THREE.Vector3(state.bodies.earth.x-issAbs.x, state.bodies.earth.y-issAbs.y, state.bodies.earth.z-issAbs.z).normalize();
+      const up = earthRel.clone().negate();
+      let right = new THREE.Vector3().crossVectors(up, new THREE.Vector3(0,0,1));
+      if (right.lengthSq()<1e-6) right.set(1,0,0); else right.normalize();
+      const fwd = new THREE.Vector3().crossVectors(right, up).normalize();
+      const m = new THREE.Matrix4().makeBasis(right, up, fwd);
+      this.issGroup.quaternion.setFromRotationMatrix(m);
+      if (this.issPorts){
+        for (const p of this.issPorts) p.worldPos.copy(p.localPos).applyQuaternion(this.issGroup.quaternion).add(this.issGroup.position);
+      }
     }
     if (this.clouds) this.clouds.position.copy(this.earth.position);
     if (this.atmosphere) this.atmosphere.position.copy(this.earth.position);
@@ -1273,8 +1509,11 @@ class RocketRenderer3D {
 
     // el suelo/rejilla local solo tienen sentido cerca de una superficie: ocultarlos si estamos lejos
     const nearAnySurface = state.altitude < 20000;
-    if (this.ground) this.ground.visible = nearAnySurface;
-    if (this.grid) this.grid.visible = nearAnySurface;
+    // this.ground y this.grid (plano azul liso + rejilla) quedan siempre ocultos: eran un
+    // resto de antes de tener texturas reales de Tierra/Luna, y tapaban el cuerpo real
+    // -- la nave y la superficie de verdad se ven mucho mejor sin ellos por delante.
+    if (this.ground) this.ground.visible = false;
+    if (this.grid) this.grid.visible = false;
 
     if (this.stars){
       this.stars.position.set(0,0,0);
@@ -1336,6 +1575,12 @@ class RocketRenderer3D {
           if (horizon) horizon.style.transform = 'rotate('+(-state.roll)+'rad) translateY('+(angleFromLevel*90).toFixed(1)+'px)';
         }
       }
+    } else if (this.viewMode==='cinematic'){
+      this.rocketGroup.visible=true;
+      this._updateCinematicCamera(state, frameDt, missionPhase);
+      document.getElementById('shakeOverlay').className='shake-overlay';
+      const vzorDiscCine=document.getElementById('vzorDisc');
+      if (vzorDiscCine) vzorDiscCine.classList.remove('active');
     } else {
       this.rocketGroup.visible=true;
       let followTarget = shipPos.clone().addScaledVector(heading,4);
@@ -1351,7 +1596,8 @@ class RocketRenderer3D {
 
     this.rocketGroup.visible=true;
     const earthPos = this.earth ? this.earth.position : new THREE.Vector3(0,-this.R_earth,0);
-    const moonPos = this.moon ? this.moon.position : new THREE.Vector3(1800000,2600000,-1200000);
+    const isIssMission = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss';
+    const moonPos = isIssMission && this.issGroup ? this.issGroup.position : (this.moon ? this.moon.position : new THREE.Vector3(1800000,2600000,-1200000));
     const frontPos=shipPos.clone().addScaledVector(heading,6);
     this.frontCam.position.copy(frontPos); this.frontCam.lookAt(earthPos);
     this.frontRenderer.render(this.scene,this.frontCam);
@@ -1363,8 +1609,72 @@ class RocketRenderer3D {
     const fData=document.getElementById('mvFrontData'), bData=document.getElementById('mvBackData');
     const distToEarthSurface = shipPos.distanceTo(earthPos) - this.R_earth;
     const distToMoon = shipPos.distanceTo(moonPos);
-    if (fData) fData.textContent = formatDistance(Math.max(0,distToEarthSurface));
-    if (bData) bData.textContent = formatDistance(distToMoon);
+    if (fData) fData.textContent = 'Dist: '+formatDistance(Math.max(0,distToEarthSurface));
+    if (bData) bData.textContent = 'Dist: '+formatDistance(distToMoon);
+
+    // Esquema de la travesia Tierra-Luna: posicion de la nave proyectada sobre la linea
+    // Tierra-Luna (0=en la Tierra, 1=en la Luna), y km recorridos de verdad desde el
+    // despegue (odometro real, sumando la distancia entre la posicion absoluta de cada
+    // fotograma, no la distancia en linea recta al destino).
+    if (!this._lastShipAbs) this._lastShipAbs = shipAbs.clone();
+    if (state.time < 1) this._traveledDist = 0;
+    else this._traveledDist = (this._traveledDist||0) + shipAbs.distanceTo(this._lastShipAbs);
+    this._lastShipAbs.copy(shipAbs);
+    const pgShip=document.getElementById('pgShip'), pgInfo=document.getElementById('pgInfo');
+    if (pgShip && pgInfo){
+      const emVec=moonPos.clone().sub(earthPos);
+      const emDist=emVec.length()||1;
+      const shipVec=shipPos.clone().sub(earthPos);
+      const rawProgress=shipVec.dot(emVec)/(emDist*emDist);
+      const progress=Math.max(0,Math.min(1,rawProgress));
+      pgShip.style.left=(6+progress*88)+'%';
+      pgInfo.textContent='Recorridos: '+formatDistance(this._traveledDist);
+    }
+  }
+  // Camara cinematica: durante el crucero, la Tierra queda a la izquierda del encuadre
+  // (atras) y la Luna a la derecha (delante, creciendo). Durante la aproximacion/descenso
+  // lunar, cambia a una vista desde detras-abajo con la Luna llenando la parte inferior.
+  // Puramente decorativo -- usa missionPhase, que ya le paso a update(), en vez de una
+  // variable global nueva.
+  _updateCinematicCamera(state, frameDt, missionPhase){
+    const shipPos=new THREE.Vector3(0,0,0);
+    const earthPos = this.earth ? this.earth.position.clone() : new THREE.Vector3(0,-this.R_earth,0);
+    const moonPos = this.moon ? this.moon.position.clone() : new THREE.Vector3(1.8e6,2.6e6,-1.2e6);
+    const toEarth = earthPos.clone().normalize();
+    const toMoon = moonPos.clone().normalize();
+    const forward = toEarth.clone().negate();
+    if (this._cinematicInit===false){
+      // Primer fotograma en este modo: coloca la camara directamente, sin suavizado,
+      // para no ver un salto largo desde donde estuviera antes.
+      this._cinematicCamPos.copy(shipPos).addScaledVector(forward,-60).addScaledVector(new THREE.Vector3(0,1,0),8);
+      this._cinematicLookAt.copy(shipPos);
+      this._cinematicInit=true;
+    }
+    let camPos, lookAt, up;
+
+    if (missionPhase==='descent' || missionPhase==='loi_burn'){
+      // ---- Descenso / aproximacion lunar: la Luna llena la parte de abajo del encuadre ----
+      up = toMoon.clone();
+      const distance=40, altura=25;
+      camPos = shipPos.clone().addScaledVector(forward,-distance).addScaledVector(up,-altura);
+      lookAt = shipPos.clone().addScaledVector(up,-80);
+    } else {
+      // ---- Resto de fases: Tierra a la izquierda, Luna a la derecha ----
+      up = new THREE.Vector3().crossVectors(toEarth,toMoon);
+      if (up.lengthSq()<1e-6) up.set(0,1,0); else up.normalize();
+      let right = new THREE.Vector3().crossVectors(forward,up).normalize();
+      if (right.lengthSq()<1e-6) right.set(1,0,0);
+      if (right.dot(toMoon)<0) right.negate();
+      const distance=60, lateralOffset=15;
+      camPos = shipPos.clone().addScaledVector(forward,-distance).addScaledVector(right,-lateralOffset).addScaledVector(up,8);
+      lookAt = shipPos.clone().addScaledVector(forward,30);
+    }
+
+    this._cinematicCamPos.lerp(camPos,0.08);
+    this._cinematicLookAt.lerp(lookAt,0.08);
+    this.camera.position.copy(this._cinematicCamPos);
+    this.camera.up.copy(up);
+    this.camera.lookAt(this._cinematicLookAt);
   }
   updateParticles(state){
     const particles=state.particles||[]; const count=particles.length;
@@ -1416,8 +1726,12 @@ class RocketRenderer3D {
     this.trailGeometry.computeBoundingSphere();
   }
   toggleView(){
-    this.viewMode=this.viewMode==='external'?'cockpit':'external';
+    const isGagarin = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='gagarin';
+    const order = isGagarin ? ['external','cockpit'] : ['external','cockpit','cinematic'];
+    const i=order.indexOf(this.viewMode);
+    this.viewMode=order[(i+1)%order.length];
     if (this.viewMode==='cockpit'){ this.controls.enabled=false; this.camera.fov=65; }
+    else if (this.viewMode==='cinematic'){ this.controls.enabled=false; this.camera.fov=55; this._cinematicInit=false; }
     else { this.controls.enabled=true; this.camera.fov=55; }
     this.camera.updateProjectionMatrix();
     return this.viewMode;
@@ -1463,7 +1777,8 @@ class MissionAutopilot {
     this.paused = false;
     this.speed = 1;
     const isGagarin = this.app.mission && this.app.mission.type==='gagarin';
-    this.phase = isGagarin ? 'gagarin_ascent' : 'ascent';
+    const isIss = this.app.mission && this.app.mission.type==='iss';
+    this.phase = isGagarin ? 'gagarin_ascent' : isIss ? 'iss_ascent' : 'ascent';
     this.phaseStart = this.app.physics.time;
     this._targetedOnce = false; this._loiSub = undefined; this._descSub = undefined;
     this._fixedDeorbitDir = null; this._numBurns = 1; this.lastExplainPhase = null;
@@ -1471,12 +1786,22 @@ class MissionAutopilot {
   }
   stop(msg){
     this.active = false;
+    this._zeroControls();
     if (msg) this.app.toast.show(msg, 6000);
+  }
+  _zeroControls(){
+    // Sin esto, al terminar el piloto automático el juego cae al modo manual heredando el
+    // ULTIMO mando que el piloto hubiera dado (throttle, actitud) y la nave sigue moviendose
+    // sola para siempre, incluso ya "aterrizada". Bug real, visto y confirmado en pantalla.
+    if (this.app && this.app.controls){
+      this.app.controls.throttle=0; this.app.controls.pitch=0; this.app.controls.yaw=0; this.app.controls.roll=0;
+    }
   }
   explain(key){
     if (this.lastExplainPhase===key) return;
     this.lastExplainPhase = key;
     const isGagarin = this.app.mission && this.app.mission.type==='gagarin';
+    const isIss = this.app.mission && this.app.mission.type==='iss';
     const MSG = {
       ascent: '🚀 Piloto automático: despegando con giro gravitatorio real hacia el este.',
       coast_leo: '🛰️ En órbita terrestre. Preparando la inyección translunar.',
@@ -1484,7 +1809,7 @@ class MissionAutopilot {
       coast_tli: '🌌 Crucero hacia la Luna, con correcciones de rumbo automáticas cada 6h simuladas.',
       loi_burn: '🌑 Aproximación lunar: cayendo con seguridad hacia una órbita baja real.',
       descent: '🛬 Descenso motorizado hacia la superficie.',
-      done: isGagarin ? null : '🎉 ¡Alunizaje automático logrado!'
+      done: (isGagarin || isIss) ? null : '🎉 ¡Alunizaje automático logrado!'
     };
     if (MSG[key]) this.app.toast.show(MSG[key], 7000);
   }
@@ -1506,6 +1831,69 @@ class MissionAutopilot {
     const preState = p.getState();
     const speedNow = Math.sqrt(p.u*p.u+p.v*p.v+p.w*p.w);
     const controls = {throttle:0,pitch:0,yaw:0,roll:0,hyperspace:false,warp:false,timeScale:1};
+
+    // ---- MISION ISS: mismo ascenso probado de Gagarin, apuntando a la altitud real
+    // de la ISS (408km) en vez de una orbita baja cualquiera. Sin acoplamiento --
+    // la misión termina al alcanzar una órbita real cerca de la ISS.
+    if (this.phase==='iss_ascent'){
+      this.explain('iss_ascent');
+      const tAsc = p.time - this.phaseStart;
+      let dir;
+      if (tAsc<8) dir = FRAME_ROTATION({x:0,y:1,z:0});
+      else { const angle=Math.min(1.45,0.02*(tAsc-8)); dir = FRAME_ROTATION(RocketPhysics.rotateVec(0,1,0,angle,LAUNCH_YAW_EAST,0)); }
+      const steer=p.autopilotSteer(dir);
+      controls.pitch=steer.pitch; controls.yaw=steer.yaw; controls.roll=steer.roll; controls.throttle=1; controls.timeScale=1;
+      const rMag=Math.hypot(p.x,p.y,p.z), vCirc=Math.sqrt(G*SOLAR_BODIES.earth.mass/rMag);
+      if (speedNow>=vCirc*1.02 && preState.altitude>80000){
+        this.phase='iss_coast_apo'; this.phaseStart=p.time; this.explain('iss_coast_apo');
+      }
+      if (preState.fuelPercent<=0){ this.stop('⚠️ Sin combustible antes de alcanzar la órbita.'); return null; }
+      return controls;
+    }
+
+    if (this.phase==='iss_coast_apo'){
+      this.explain('iss_coast_apo');
+      controls.throttle=0; controls.timeScale=20;
+      const rHat=norm3({x:p.x,y:p.y,z:p.z});
+      const vRad=p.u*rHat.x+p.v*rHat.y+p.w*rHat.z;
+      if (vRad<=0){ this.phase='iss_circularize'; this.phaseStart=p.time; this.explain('iss_circularize'); }
+      return controls;
+    }
+
+    if (this.phase==='iss_circularize'){
+      this.explain('iss_circularize');
+      const dir = speedNow>0.5 ? norm3({x:p.u,y:p.v,z:p.w}) : FRAME_ROTATION({x:0,y:1,z:0});
+      const steer=p.autopilotSteer(dir);
+      controls.pitch=steer.pitch; controls.yaw=steer.yaw; controls.roll=steer.roll; controls.timeScale=1;
+      const rMag=Math.hypot(p.x,p.y,p.z), vCirc=Math.sqrt(G*SOLAR_BODIES.earth.mass/rMag);
+      controls.throttle = speedNow<vCirc ? 1 : 0;
+      const mu=G*SOLAR_BODIES.earth.mass;
+      const hx=p.y*p.w-p.z*p.v, hy=p.z*p.u-p.x*p.w, hz=p.x*p.v-p.y*p.u;
+      const vxh_x=p.v*hz-p.w*hy, vxh_y=p.w*hx-p.u*hz, vxh_z=p.u*hy-p.v*hx;
+      const ex=vxh_x/mu-p.x/rMag, ey=vxh_y/mu-p.y/rMag, ez=vxh_z/mu-p.z/rMag;
+      const eMag=Math.sqrt(ex*ex+ey*ey+ez*ez);
+      const a=1/(2/rMag-speedNow*speedNow/mu);
+      const r_p = (isFinite(a)&&a>0) ? a*(1-eMag) : -1;
+      if (r_p>0 && (r_p-SOLAR_BODIES.earth.radius)>346800){ // 85% de 408km, igual que el umbral ya probado
+        this.phase='iss_orbit'; this.phaseStart=p.time; this.explain('iss_orbit');
+        this.app.toast.show('🛰️ Órbita real alcanzada cerca de la ISS — perigeo '+((r_p-SOLAR_BODIES.earth.radius)/1000).toFixed(0)+'km', 6000);
+      }
+      if (speedNow>=vCirc*1.06){ this.stop('⚠️ Circularización fallida — velocidad excesiva.'); return null; }
+      if (preState.fuelPercent<=0){ this.stop('⚠️ Sin combustible durante la circularización.'); return null; }
+      return controls;
+    }
+
+    if (this.phase==='iss_orbit'){
+      this.explain('iss_orbit');
+      const dir = norm3({x:p.u,y:p.v,z:p.w});
+      const steer=p.autopilotSteer(dir);
+      controls.pitch=steer.pitch; controls.yaw=steer.yaw; controls.roll=steer.roll; controls.throttle=0; controls.timeScale=10;
+      if (p.time-this.phaseStart>30){
+        this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
+        this.app.toast.show('🎉 En órbita real, volando en formación cerca de la ISS. Sin acoplamiento todavía.', 8000);
+      }
+      return controls;
+    }
 
     // ---- MISION GAGARIN (Vostok 1): ascenso -> coast a apoastro -> circularizacion real ----
     // -> una vuelta orbital -> retrofrenado -> reentrada (la resistencia atmosferica ya
@@ -1611,7 +1999,7 @@ class MissionAutopilot {
       const decay = Math.pow(0.15, 1/60);
       p.u*=decay; p.v*=decay; p.w*=decay;
       if (preState.altitude<=0){
-        this.phase='done'; this.explain('done');
+        this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
         this.app.toast.show('🎉 "¡Poyejali!" — Gagarin aterriza sano y salvo cerca de Smelovka.', 8000);
       }
       return controls;
@@ -1778,7 +2166,7 @@ class MissionAutopilot {
       controls.pitch=steer.pitch; controls.yaw=steer.yaw; controls.roll=steer.roll; controls.throttle=throttle; controls.timeScale=1;
 
       if (alt<=2 && Math.abs(vertSpeed)<3 && horizSpeed<5){
-        this.phase='done'; this.explain('done'); this.active=false;
+        this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
       }
       if (alt<=2 && (Math.abs(vertSpeed)>=3 || horizSpeed>=5)){
         this.stop('💥 Alunizaje demasiado duro.');
@@ -1941,7 +2329,11 @@ class RocketSimApp {
     });
     document.getElementById('btnToggleView').addEventListener('click',()=>{
       const mode=this.renderer.toggleView();
-      document.getElementById('btnToggleView').textContent=mode==='external'?'👁️ Cabina':'👁️ Externa';
+      const isGagarin = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='gagarin';
+      const label = isGagarin
+        ? (mode==='external' ? '👁️ Cabina' : '👁️ Externa')
+        : (mode==='external' ? '👁️ Cabina' : mode==='cockpit' ? '🎥 Cine' : '👁️ Externa');
+      document.getElementById('btnToggleView').textContent=label;
     });
     document.getElementById('mvFront').addEventListener('click',()=>{
       this.renderer.setFocus(this.renderer.focusTarget==='earth' ? null : 'earth');
