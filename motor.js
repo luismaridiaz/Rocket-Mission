@@ -648,18 +648,26 @@ function makeEarthTexture(){
   const ctx=c.getContext('2d');
   // Oceano: degradado azul mas profundo en polos, mas claro en el ecuador (como el real)
   const grad=ctx.createLinearGradient(0,0,0,H);
-  grad.addColorStop(0,'#0a1f3d'); grad.addColorStop(0.5,'#1c5a8a'); grad.addColorStop(1,'#0a1f3d');
+  grad.addColorStop(0,'#051428'); grad.addColorStop(0.5,'#0f4d85'); grad.addColorStop(1,'#051428');
   ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+
+  // Mapa de rugosidad EN PARALELO: oceano oscuro (bajo=brillante, como el agua real),
+  // tierra clara (alto=mate). Mismos trazados que el mapa de color, para que coincidan.
+  const rc=document.createElement('canvas'); rc.width=W; rc.height=H;
+  const rctx=rc.getContext('2d');
+  rctx.fillStyle='#1a1a1a'; rctx.fillRect(0,0,W,H); // oceano: rugosidad baja, brilla
 
   // lon/lat -> pixel (equirectangular)
   const px=(lon)=>(lon+180)/360*W, py=(lat)=>(90-lat)/180*H;
   function land(points,color){
-    ctx.fillStyle=color;
-    ctx.beginPath();
-    points.forEach(([lon,lat],i)=>{ const x=px(lon), y=py(lat); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
-    ctx.closePath(); ctx.fill();
+    ctx.fillStyle=color; rctx.fillStyle='#dcdcdc'; // tierra: rugosidad alta, mate
+    [ctx,rctx].forEach(c2=>{
+      c2.beginPath();
+      points.forEach(([lon,lat],i)=>{ const x=px(lon), y=py(lat); if(i===0) c2.moveTo(x,y); else c2.lineTo(x,y); });
+      c2.closePath(); c2.fill();
+    });
   }
-  const green='#3f6b3a', greenDark='#2c4f28', tan='#9c8654', desert='#b89968';
+  const green='#4a8c3f', greenDark='#2f5c2a', tan='#b89a5e', desert='#d4b06a';
 
   // Africa (silueta simplificada pero reconocible)
   land([[-17,15],[10,32],[33,31],[43,12],[51,10],[42,-2],[40,-16],[35,-25],[20,-35],[13,-18],[9,4],[-6,5],[-17,15]], green);
@@ -697,19 +705,22 @@ function makeEarthTexture(){
   ctx.drawImage(noiseCanvas,0,0,W,H);
   ctx.globalCompositeOperation='source-over';
 
-  // Casquetes polares
+  // Casquetes polares (tambien mate en el mapa de rugosidad, como el hielo real)
   ctx.fillStyle='#eef4f8';
   ctx.fillRect(0,0,W,H*0.045); ctx.fillRect(0,H*0.955,W,H*0.045);
-  return new THREE.CanvasTexture(c);
+  rctx.fillStyle='#cccccc';
+  rctx.fillRect(0,0,W,H*0.045); rctx.fillRect(0,H*0.955,W,H*0.045);
+  return { map:new THREE.CanvasTexture(c), roughnessMap:new THREE.CanvasTexture(rc) };
 }
 function makeCloudsTexture(){
   const c=document.createElement('canvas'); c.width=1024; c.height=512;
   const ctx=c.getContext('2d');
-  // fondo transparente: las nubes son solo las manchas blancas
-  for (let i=0;i<90;i++){
+  // fondo transparente: las nubes son solo las manchas blancas -- cobertura reducida
+  // para que la superficie de debajo (continentes, oceano) se vea de verdad, no un velo blanco
+  for (let i=0;i<40;i++){
     const cx=Math.random()*1024, cy=Math.random()*512;
-    const rx=20+Math.random()*70, ry=10+Math.random()*30;
-    const alpha=0.15+Math.random()*0.35;
+    const rx=15+Math.random()*45, ry=8+Math.random()*18;
+    const alpha=0.10+Math.random()*0.20;
     ctx.fillStyle=`rgba(255,255,255,${alpha})`;
     ctx.beginPath();
     const pts=10;
@@ -797,7 +808,7 @@ function makeIceTexture(baseColor){
 function makeMoonTexture(){
   const c=document.createElement('canvas'); c.width=1024; c.height=512;
   const ctx=c.getContext('2d');
-  ctx.fillStyle='#c9c3b8'; ctx.fillRect(0,0,1024,512);
+  ctx.fillStyle='#8f8b82'; ctx.fillRect(0,0,1024,512);
   // Mares (planicies basalticas oscuras) -- manchas grandes e irregulares, como las reales
   for (let i=0;i<9;i++){
     const x=Math.random()*1024, y=Math.random()*512, r=40+Math.random()*90;
@@ -914,11 +925,16 @@ class RocketRenderer3D {
 
     // Tierra: intenta una foto real (NASA/LRO vía CDN publico); si el navegador la bloquea
     // (politica CORS de algunos servidores), cae solas a la textura procedural sin romper nada.
-    const earthMat=new THREE.MeshStandardMaterial({map:makeEarthTexture(),roughness:0.85,metalness:0.05});
+    const earthTex = makeEarthTexture();
+    const earthMat=new THREE.MeshStandardMaterial({map:earthTex.map,roughnessMap:earthTex.roughnessMap,roughness:1,metalness:0.05});
     const realEarthLoader=new THREE.TextureLoader();
     realEarthLoader.load(
       'https://s3-us-west-2.amazonaws.com/s.cdpn.io/122460/earth_map_2048x1024.jpg',
-      (tex)=>{ earthMat.map=tex; earthMat.needsUpdate=true; },
+      (tex)=>{
+        earthMat.map=tex;
+        earthMat.roughnessMap=null; earthMat.roughness=0.85; // el mapa de rugosidad procedural no coincidiria con las costas de la foto real
+        earthMat.needsUpdate=true;
+      },
       undefined,
       ()=>{ console.warn('Textura real de la Tierra bloqueada, usando la procedural.'); }
     );
@@ -1353,6 +1369,7 @@ class RocketRenderer3D {
       this.sICGroup.visible=true; this.sIIGroup.visible=true; this.sIVBGroup.visible=true; this.lmLegsGroup.visible=false;
       this.sICGroup.position.set(0,0,0); this.sICGroup.rotation.set(0,0,0);
       this.sIIGroup.position.set(0,0,0); this.sIIGroup.rotation.set(0,0,0);
+      this.lmLegsGroup.position.y=0;
       this._fallingStages=[];
       return;
     }
@@ -1371,6 +1388,10 @@ class RocketRenderer3D {
     if (wantSII) this.sIIGroup.visible=true;
     if (wantSIVB) this.sIVBGroup.visible=true;
     this.lmLegsGroup.visible = arrivedAtMoon;
+    // Sin S-IC/S-II/S-IVB debajo, las patas se quedaban colgando solas muy por debajo de la
+    // capsula (su posicion original asumia todo el cuerpo del cohete encima). Se reubican
+    // justo bajo la capsula para que no queden como dos trozos sueltos con un hueco enorme.
+    this.lmLegsGroup.position.y = arrivedAtMoon ? 6.5 : 0;
   }
   // Anima las etapas descartadas: se quedan atras (se alejan del morro de la nave) y giran
   // lentamente, durante 3s, antes de desaparecer del todo. Puramente decorativo.
@@ -1506,6 +1527,10 @@ class RocketRenderer3D {
     if (this.bodyMeshes.jupiter) this.bodyMeshes.jupiter.rotation.y = (state.time/35730)*Math.PI*2; // 9h 55m 30s real
     if (this.bodyMeshes.saturn) this.bodyMeshes.saturn.rotation.y = (state.time/38018)*Math.PI*2; // 10h 33m 38s real
     if (this.atmosphere) this.atmosphere.visible = (state.body==='earth');
+    // Las nubes estan a solo ~51km de la superficie -- por debajo de eso la camara pasa
+    // literalmente dentro de la capa durante el despegue y el aterrizaje, viendola de canto
+    // como un muro blanco. Se oculta mientras la nave este mas baja que la propia capa.
+    if (this.clouds) this.clouds.visible = (state.body==='earth' && state.altitude>52000);
 
     // el suelo/rejilla local solo tienen sentido cerca de una superficie: ocultarlos si estamos lejos
     const nearAnySurface = state.altitude < 20000;
@@ -2000,6 +2025,7 @@ class MissionAutopilot {
       p.u*=decay; p.v*=decay; p.w*=decay;
       if (preState.altitude<=0){
         this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
+        p.u=0; p.v=0; p.w=0; // misma parada real que en Apolo
         this.app.toast.show('🎉 "¡Poyejali!" — Gagarin aterriza sano y salvo cerca de Smelovka.', 8000);
       }
       return controls;
@@ -2167,6 +2193,9 @@ class MissionAutopilot {
 
       if (alt<=2 && Math.abs(vertSpeed)<3 && horizSpeed<5){
         this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
+        p.u=0; p.v=0; p.w=0; // parada real -- sin esto, la velocidad residual (hasta 5 m/s
+        // horizontales admitidos como "aterrizaje logrado") se mantiene para siempre, porque
+        // no hay friccion de suelo simulada que la frene sola.
       }
       if (alt<=2 && (Math.abs(vertSpeed)>=3 || horizSpeed>=5)){
         this.stop('💥 Alunizaje demasiado duro.');
