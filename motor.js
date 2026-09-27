@@ -354,7 +354,9 @@ class RocketPhysics {
       if (!target){ this.dockedTo=null; }
       else if (this.throttle>0.3){ this.undock(); }
       else {
-        const ts=dockingTargetState(target, this.time);
+        const ts = this._dockingTargetResolver
+          ? this._dockingTargetResolver(target, this.time)
+          : dockingTargetState(target, this.time);
         this.x=ts.pos.x; this.y=ts.pos.y; this.z=ts.pos.z;
         this.u=ts.vel.x; this.v=ts.vel.y; this.w=ts.vel.z;
         const parent=SOLAR_BODIES[target.parent];
