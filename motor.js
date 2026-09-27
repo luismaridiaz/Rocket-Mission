@@ -1394,7 +1394,12 @@ class RocketRenderer3D {
     }
     if (!this._fallingStages) this._fallingStages=[];
     const isAscent = missionPhase==='ascent' || missionPhase==='iss_ascent';
-    const arrivedAtMoon = ['loi_burn','descent','done'].includes(missionPhase);
+    // 'done' es un string de fase COMPARTIDO entre Apolo y la ISS (ambos terminan su
+    // piloto automatico asi). Sin esta guarda, al llegar la ISS a 'done' el codigo
+    // creia que era Apolo llegando a la Luna: ocultaba el motor y mostraba el modulo
+    // lunar en una nave que nunca deberia tenerlo (bug real, confirmado por Luis).
+    const isIssMissionPhase = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss';
+    const arrivedAtMoon = !isIssMissionPhase && ['loi_burn','descent','done'].includes(missionPhase);
     const wantSIC = isAscent, wantSII = isAscent, wantSIVB = !arrivedAtMoon;
     const alreadyFalling=(g)=>this._fallingStages.some(fs=>fs.group===g);
     // Al pasar de visible a oculta, no se apaga de golpe: se marca para que
@@ -1631,6 +1636,22 @@ class RocketRenderer3D {
       if (this.focusTarget && this.bodyMeshes[this.focusTarget]){
         followTarget = this.bodyMeshes[this.focusTarget].position.clone();
       }
+      // Al acoplar, la ISS se posiciona en el mismo punto que la nave (distancia
+      // relativa 0), y es mucho mas grande que ella. Con minDistance=5 (pensado
+      // para ver solo la nave), la camara queda demasiado cerca para distinguir
+      // la ISS -- se ve una mezcla de geometrias superpuestas, no la estacion.
+      // Al detectar la transicion a acoplado, se aleja la camara automaticamente
+      // y se sube el minimo permitido; al desacoplar, se restauran los valores
+      // normales de una nave sola.
+      if (state.dockedTo && !this._wasDocked){
+        this.controls.minDistance=35;
+        const dir=this.camera.position.clone().sub(this.controls.target).normalize();
+        if (dir.lengthSq()<0.01) dir.set(0.4,0.3,0.6).normalize();
+        this.camera.position.copy(followTarget).addScaledVector(dir,45);
+      } else if (!state.dockedTo && this._wasDocked){
+        this.controls.minDistance=5;
+      }
+      this._wasDocked = !!state.dockedTo;
       this.controls.target.lerp(followTarget,0.3); this.controls.update();
       document.getElementById('shakeOverlay').className='shake-overlay';
       const vzorDiscExt=document.getElementById('vzorDisc');
