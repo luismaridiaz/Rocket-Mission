@@ -2423,11 +2423,19 @@ class RocketSimApp {
       this.physics.refuel();
     });
     document.getElementById('btnDock').addEventListener('click',()=>{
+      const infoAntes = this.physics.nearestDockingInfo();
       const ok=this.physics.tryDock();
       if (ok && this.dockingAuto && this.dockingAuto.isActive()) {
         this.dockingAuto.deactivate();
       }
       this.toast.show(ok?'🔗 Acoplado':'⚠️ Fuera de tolerancia', 3000);
+      // DEBUG TEMPORAL: valores exactos con los que se evaluo tryDock() en este clic
+      // (el HUD normal muestra el fotograma anterior, este es el instante real del clic).
+      const dbgEl = document.getElementById('debugCloseBody');
+      if (dbgEl && infoAntes){
+        dbgEl.style.display='block';
+        dbgEl.textContent = 'DEBUG clic Acoplar: dist='+infoAntes.dist.toFixed(3)+'m relSpeed='+infoAntes.relSpeed.toFixed(3)+'m/s canDock='+infoAntes.canDock+' dockedTo(despues)='+this.physics.dockedTo;
+      }
     });
     document.getElementById('btnUndock').addEventListener('click',()=>{
       this.physics.undock();

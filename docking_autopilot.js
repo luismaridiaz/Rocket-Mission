@@ -115,6 +115,15 @@ const DockingAutopilot = (() => {
       this.state = 'IDLE';
       this._pendingBurn = null;
       this._finalBurn = false;
+      // Sin esto, el ultimo mando que el CW hubiera dado (throttle, actitud) quedaba
+      // heredado por el modo manual en el fotograma siguiente, igual que el bug ya
+      // arreglado en MissionAutopilot._zeroControls().
+      if (this.app && this.app.controls) {
+        this.app.controls.throttle = 0;
+        this.app.controls.pitch = 0;
+        this.app.controls.yaw = 0;
+        this.app.controls.roll = 0;
+      }
       if (msg && this.app && this.app.toast) this.app.toast.show(msg, 4000);
     }
 
