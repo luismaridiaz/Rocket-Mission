@@ -2425,16 +2425,22 @@ class RocketSimApp {
     document.getElementById('btnDock').addEventListener('click',()=>{
       const infoAntes = this.physics.nearestDockingInfo();
       const ok=this.physics.tryDock();
-      if (ok && this.dockingAuto && this.dockingAuto.isActive()) {
-        this.dockingAuto.deactivate();
+      if (ok && this.dockingAuto) {
+        this.dockingAuto.deactivate(); // deactivate() ya comprueba internamente si seguia activo
       }
       this.toast.show(ok?'🔗 Acoplado':'⚠️ Fuera de tolerancia', 3000);
+      if (ok) {
+        // Forzar el refresco del HUD YA, en el mismo clic, sin esperar al siguiente
+        // fotograma de render -- elimina cualquier posible demora o inconsistencia
+        // entre el clic y lo que se ve en pantalla.
+        this.updateUI(this.physics.getState());
+      }
       // DEBUG TEMPORAL: valores exactos con los que se evaluo tryDock() en este clic
       // (el HUD normal muestra el fotograma anterior, este es el instante real del clic).
       const dbgEl = document.getElementById('debugCloseBody');
       if (dbgEl && infoAntes){
         dbgEl.style.display='block';
-        dbgEl.textContent = 'DEBUG clic Acoplar: dist='+infoAntes.dist.toFixed(3)+'m relSpeed='+infoAntes.relSpeed.toFixed(3)+'m/s canDock='+infoAntes.canDock+' dockedTo(despues)='+this.physics.dockedTo;
+        dbgEl.textContent = 'DEBUG clic Acoplar: dist='+infoAntes.dist.toFixed(3)+'m relSpeed='+infoAntes.relSpeed.toFixed(3)+'m/s canDock='+infoAntes.canDock+' dockedTo(despues)='+this.physics.dockedTo+' cwActive(despues)='+(this.dockingAuto&&this.dockingAuto.isActive());
       }
     });
     document.getElementById('btnUndock').addEventListener('click',()=>{
