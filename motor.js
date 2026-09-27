@@ -361,7 +361,7 @@ class RocketPhysics {
         this.u=ts.vel.x; this.v=ts.vel.y; this.w=ts.vel.z;
         const parent=SOLAR_BODIES[target.parent];
         this._lastState={altitude:ts.r-parent.radius, bodyName:target.parent, dist:ts.r, gMag:6.67430e-11*parent.mass/(ts.r*ts.r), reentryFlag:false};
-        return;
+        return this.getState();
       }
     }
 
