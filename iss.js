@@ -33,7 +33,7 @@ function orbitalObjectPosition(obj, t) {
   const parentPos = positionOf(obj.parent, t);
 
   const r = parent.radius + obj.altitude;
-  const mu = 6.674e-11 * parent.mass;
+  const mu = G * parent.mass;
   const period = 2 * Math.PI * Math.sqrt(Math.pow(r, 3) / mu);
 
   const angle = obj.phase0 + (2 * Math.PI / period) * t;
@@ -57,12 +57,27 @@ function orbitalObjectPosition(obj, t) {
 // y esa velocidad tiene que coincidir con el marco de referencia de la nave, que es
 // relativo a la Tierra, no al Sol.
 function orbitalObjectVelocity(obj, t) {
-  const dt = 1;
-  const parent0 = positionOf(obj.parent, t);
-  const parent1 = positionOf(obj.parent, t + dt);
-  const p0 = orbitalObjectPosition(obj, t);
-  const p1 = orbitalObjectPosition(obj, t + dt);
-  const rel0 = { x: p0.x-parent0.x, y: p0.y-parent0.y, z: p0.z-parent0.z };
-  const rel1 = { x: p1.x-parent1.x, y: p1.y-parent1.y, z: p1.z-parent1.z };
-  return { x: (rel1.x-rel0.x)/dt, y: (rel1.y-rel0.y)/dt, z: (rel1.z-rel0.z)/dt };
+  const parent = SOLAR_BODIES[obj.parent];
+  const r = parent.radius + obj.altitude;
+  const mu = G * parent.mass;
+  const period = 2 * Math.PI * Math.sqrt(Math.pow(r, 3) / mu);
+  const n = 2 * Math.PI / period;
+
+  const angle = obj.phase0 + n * t;
+  const cosA = Math.cos(angle), sinA = Math.sin(angle);
+  const inc = obj.inclination;
+  const raan = obj.raan;
+  const cosI = Math.cos(inc), sinI = Math.sin(inc);
+  const cosR = Math.cos(raan), sinR = Math.sin(raan);
+
+  const dxp = -r * n * sinA;
+  const dzp =  r * n * cosA;
+
+  const dyp  = dzp * sinI;
+  const dzp2 = dzp * cosI;
+
+  const dx2 = dxp * cosR - dzp2 * sinR;
+  const dz2 = dxp * sinR + dzp2 * cosR;
+
+  return { x: dx2, y: dyp, z: dz2 };
 }

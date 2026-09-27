@@ -25,20 +25,22 @@
 }
 body{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg-primary);color:var(--text-primary);overflow:hidden;height:100vh;user-select:none;-webkit-user-select:none;}
 .app-container{display:grid;grid-template-columns:340px 1fr;grid-template-rows:1fr;height:100vh;background:var(--bg-primary);}
-.control-panel{background:var(--bg-panel);border-right:1px solid var(--border-color);padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;backdrop-filter:blur(20px);z-index:10;}
+.control-panel{background:var(--bg-panel);border-right:1px solid var(--border-color);padding:10px 14px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;backdrop-filter:blur(20px);z-index:10;}
 .control-panel::-webkit-scrollbar{width:3px;}
 .control-panel::-webkit-scrollbar-thumb{background:var(--accent);border-radius:4px;}
 .panel-header{display:flex;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--border-color);}
 .panel-header .logo{font-size:28px;animation:rocket-bob 2s ease-in-out infinite;}
 @keyframes rocket-bob{0%,100%{transform:translateY(0) rotate(-5deg);}50%{transform:translateY(-3px) rotate(5deg);}}
 .panel-header h1{font-size:17px;font-weight:800;font-family:'Courier New',monospace;background:linear-gradient(135deg,#ffb347,#ff6b00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
-.panel-header .version{font-size:9px;color:var(--text-muted);background:rgba(255,179,71,.1);padding:2px 10px;border-radius:12px;border:1px solid var(--border-color);margin-left:auto;}
-.control-group{display:flex;flex-direction:column;gap:5px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.panel-header .version{font-size:9px;color:var(--text-muted);background:rgba(255,179,71,.1);padding:2px 10px;border-radius:12px;border:1px solid var(--border-color);}
+.panel-header .back-link{font-size:11px;color:var(--text-secondary);text-decoration:none;padding:4px 10px;border-radius:8px;border:1px solid var(--border-color);white-space:nowrap;margin-left:auto;transition:background .15s;}
+.panel-header .back-link:hover{background:rgba(255,255,255,.06);}
+.control-group{display:flex;flex-direction:column;gap:3px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.04);}
 .control-group:last-child{border-bottom:none;padding-bottom:0;}
 .control-group label{font-size:10px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.8px;display:flex;justify-content:space-between;}
 .control-group label .value{color:var(--accent);font-family:'Courier New',monospace;font-size:11px;text-shadow:0 0 20px var(--accent-glow);}
-input[type="range"]{-webkit-appearance:none;width:100%;height:3px;padding:9px 0;background-clip:content-box;background:linear-gradient(to right,#1a1a2a,#2a2a3a);border-radius:2px;outline:none;transition:all .3s;box-sizing:content-box;}
-input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;background:radial-gradient(circle,#ffb347,#ff6b00);border-radius:50%;cursor:pointer;border:2px solid #1a1a2a;box-shadow:0 0 20px var(--accent-glow),inset 0 0 10px rgba(255,200,100,.3);transition:all .2s;}
+input[type="range"]{-webkit-appearance:none;width:100%;height:3px;padding:5px 0;background-clip:content-box;background:linear-gradient(to right,#1a1a2a,#2a2a3a);border-radius:2px;outline:none;transition:all .3s;box-sizing:content-box;}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;background:radial-gradient(circle,#ffb347,#ff6b00);border-radius:50%;cursor:pointer;border:2px solid #1a1a2a;box-shadow:0 0 20px var(--accent-glow),inset 0 0 10px rgba(255,200,100,.3);transition:all .2s;}
 input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow:0 0 30px var(--accent-glow);}
 .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .btn-row.three{grid-template-columns:1fr 1fr 1fr;}
@@ -122,7 +124,7 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
 .landing-hud .lh-row.warn span:last-child{color:#ffaa00;}
 @media (max-width:768px){
   .app-container{grid-template-columns:1fr;grid-template-rows:auto 1fr;}
-  .control-panel{max-height:45vh;border-right:none;border-bottom:1px solid var(--border-color);padding:10px 12px;}
+  .control-panel{max-height:33vh;border-right:none;border-bottom:1px solid var(--border-color);padding:10px 12px;}
   .mini-view{width:110px;height:80px;}
 }
 .map-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:#03030a;z-index:50;display:flex;flex-direction:column;}
@@ -145,6 +147,7 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
     <div class="panel-header">
       <span class="logo">🚀</span>
       <h1>ROCKET SIM</h1>
+      <a class="back-link" href="index.html">← Índice</a>
       <span class="version">v5.0</span>
     </div>
 
@@ -287,6 +290,7 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
       <div class="lh-row"><span>Objetivo</span><span id="dhName">-</span></div>
       <div class="lh-row"><span>Distancia</span><span id="dhDist">0 m</span></div>
       <div class="lh-row"><span>V. relativa</span><span id="dhSpeed">0 m/s</span></div>
+      <button type="button" class="btn btn-warp" id="btnCW" style="width:100%;margin-top:6px;display:none">🛰️ Asistente CW</button>
       <button type="button" class="btn btn-success" id="btnDock" style="width:100%;margin-top:6px;display:none">🔗 Acoplar</button>
       <button type="button" class="btn btn-danger" id="btnUndock" style="width:100%;margin-top:6px;display:none">🔓 Separar</button>
     </div>
@@ -374,7 +378,7 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
 
     <h3 style="color:var(--accent);margin:14px 0 6px;">🎯 Piloto automático de misión: qué es física real y qué no</h3>
     <p><b>Física real de verdad</b> (pasa por el motor, gasta combustible según la ecuación del cohete): el despegue con giro gravitatorio, la espera hasta el apoastro, y la circularización en el apoastro — las tres son quemas reales, comprobadas con los elementos orbitales de la nave (perigeo, apogeo, excentricidad), no con un simple aviso de "ya estás en órbita".</p>
-    <p><b>Sin acoplamiento</b>: esta es la Fase 1 — que la ISS exista, orbite de verdad, y que tu nave llegue a una órbita real cerca de ella. Acercarte hasta un puerto concreto y acoplar es un problema de navegación bastante más difícil (encuentro orbital, sincronización de fase, aproximación fina), y queda para más adelante.</p>
+    <p><b>Sin acoplamiento en el piloto automático de ascenso</b>: la Fase 1 (despegue, órbita real, ajuste de fase con la ISS) es física real y automática. Acoplar de verdad — acercarse hasta el puerto, frenar sin pasarse — es un problema de navegación distinto (encuentro orbital), y para eso existe el <b>🛰️ Asistente CW</b>: aparece junto al panel de acoplamiento cuando estás a menos de 200m, y hace el trabajo fino de la aproximación final. El piloto automático de ascenso te deja a unos 100m de la ISS — desde ahí, el Asistente CW completa el acoplamiento solo.</p>
 
     <h3 style="color:var(--accent);margin:14px 0 6px;">🛰️ Por qué la inclinación de la ISS no es la real</h3>
     <p><b>Dato real</b>: la ISS orbita inclinada 51,64° respecto al ecuador — el compromiso entre lo que Rusia y EEUU podían lanzar cada uno desde sus propios cosmódromos.</p>
@@ -398,7 +402,7 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
 window.MISSION_CONFIG = {
   type: 'iss',
   title: 'Estación Espacial Internacional',
-  briefing: 'Alcanza una órbita terrestre real cerca de la Estación Espacial Internacional, a 408 km de altitud — la misma altura a la que orbita de verdad. Sin acoplamiento todavía: esta demo termina al lograr una órbita estable cerca de ella, volando en formación. Dato real: la ISS orbita inclinada 51,64° respecto al ecuador; aquí usa 5,2° (la latitud de Kourou) para que sea alcanzable sin gastar combustible en un cambio de plano — el mismo compromiso que ya se hace con la Luna en la misión Apolo 11.',
+  briefing: 'Alcanza una órbita terrestre real cerca de la Estación Espacial Internacional, a 408 km de altitud — la misma altura a la que orbita de verdad. El piloto automático te dejará a unos 100 metros de ella; desde ahí, usa el 🛰️ Asistente CW (aparece junto al panel de acoplamiento) para completar el encuentro y acoplarte. Dato real: la ISS orbita inclinada 51,64° respecto al ecuador; aquí usa 5,2° (la latitud de Kourou) para que sea alcanzable sin gastar combustible en un cambio de plano — el mismo compromiso que ya se hace con la Luna en la misión Apolo 11.',
   physicsStack: [
     { id:'iss-ship', dryMass:7500, fuelMass:950000, maxFuelMass:950000, thrust:20664765, isp:450 }
   ], // probado de extremo a extremo: ascenso + coast a apoastro + circularizacion real
@@ -412,5 +416,7 @@ window.MISSION_CONFIG = {
 };
 </script>
 <script src="motor.js"></script>
+<script src="cw_solver.js"></script>
+<script src="docking_autopilot.js"></script>
 </body>
 </html>

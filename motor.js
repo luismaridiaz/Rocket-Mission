@@ -233,6 +233,7 @@ class RocketPhysics {
     this.particles=[]; this.trail=[]; this.shakeIntensity=0; this.rpm=0;
     this.G=6.67430e-11;
     this._lastState={altitude:0, bodyName:'earth', dist:SOLAR_BODIES.earth.radius, gMag:9.81, reentryFlag:false};
+    this._dockingTargetResolver = null;
   }
   get dryMass(){ return this.stack.dryMass; }
   get fuelMass(){ return this.stack.fuelMass; }
@@ -259,6 +260,13 @@ class RocketPhysics {
     return { density: p>0?p/(287.05*T):0 };
   }
   refuel(){ const cur=this.stack.current(); cur.fuelMass=cur.maxFuelMass; }
+  // La app puede inyectar un resolver que decida como calcular la posicion/velocidad
+  // de cada target de acoplamiento. Si no se inyecta, se usa `dockingTargetState`
+  // (comportamiento original del sandbox). En iss.html se inyecta uno que usa la
+  // ISS real de `iss.js`, para que el HUD mida contra la misma ISS que el jugador ve.
+  setDockingTargetResolver(fn) {
+    this._dockingTargetResolver = fn;
+  }
   // Devuelve info del objetivo de acoplamiento mas cercano ALCANZABLE (mismo cuerpo dominante que la nave).
   // Generico: sirve para cualquier objetivo de DOCKING_TARGETS, no solo la plataforma de demostracion.
   nearestDockingInfo(){
@@ -266,7 +274,9 @@ class RocketPhysics {
     let best=null;
     for (const target of DOCKING_TARGETS){
       if (target.parent!==bodyName) continue;
-      const ts=dockingTargetState(target, this.time);
+      const ts = this._dockingTargetResolver
+        ? this._dockingTargetResolver(target, this.time)
+        : dockingTargetState(target, this.time);
       const dx=this.x-ts.pos.x, dy=this.y-ts.pos.y, dz=this.z-ts.pos.z;
       const dist=Math.sqrt(dx*dx+dy*dy+dz*dz);
       const dvx=this.u-ts.vel.x, dvy=this.v-ts.vel.y, dvz=this.w-ts.vel.z;
@@ -853,7 +863,7 @@ class RocketRenderer3D {
 
     this.composer=new THREE.EffectComposer(this.renderer);
     this.composer.addPass(new THREE.RenderPass(this.scene,this.camera));
-    this.bloomPass=new THREE.UnrealBloomPass(new THREE.Vector2(width,height),0.3,0.2,0.1);
+    this.bloomPass=new THREE.UnrealBloomPass(new THREE.Vector2(width,height),0.3,0.2,0.45);
     this.composer.addPass(this.bloomPass);
 
     this.controls=new THREE.OrbitControls(this.camera,this.renderer.domElement);
@@ -1269,6 +1279,15 @@ class RocketRenderer3D {
     // y el modulo de mando, como en el Apolo 11 real) -- se muestran al llegar a la Luna ----
     this.lmLegsGroup = new THREE.Group();
     this.lmLegsGroup.visible = false;
+    // Cuerpo del modulo de descenso: octogonal (como el LM real), para que las patas
+    // no queden sueltas en el aire sin nada que las conecte visualmente a la capsula.
+    const lmBody=new THREE.Mesh(new THREE.CylinderGeometry(1.15,1.15,0.9,8), legMat);
+    lmBody.position.y=-0.15;
+    lmBody.castShadow=true;
+    this.lmLegsGroup.add(lmBody);
+    const lmNozzle=new THREE.Mesh(new THREE.ConeGeometry(0.35,0.6,8), engineMat);
+    lmNozzle.position.y=-0.85;
+    this.lmLegsGroup.add(lmNozzle);
     for (let i=0;i<4;i++){
       const angle=(i/4)*Math.PI*2+Math.PI/4;
       const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,1.5,8),legMat);
@@ -1374,7 +1393,7 @@ class RocketRenderer3D {
       return;
     }
     if (!this._fallingStages) this._fallingStages=[];
-    const isAscent = missionPhase==='ascent';
+    const isAscent = missionPhase==='ascent' || missionPhase==='iss_ascent';
     const arrivedAtMoon = ['loi_burn','descent','done'].includes(missionPhase);
     const wantSIC = isAscent, wantSII = isAscent, wantSIVB = !arrivedAtMoon;
     const alreadyFalling=(g)=>this._fallingStages.some(fs=>fs.group===g);
@@ -1569,7 +1588,7 @@ class RocketRenderer3D {
     this.updateParticles(state);
     this.updateTrail(state, shipAbs);
 
-    this.bloomPass.strength=0.2+state.throttle*0.6+(state.hyperspace?0.5:0)+(state.warp?0.3:0)+(state.reentry?0.7:0);
+    this.bloomPass.strength=0.2+state.throttle*0.25+(state.hyperspace?0.5:0)+(state.warp?0.3:0)+(state.reentry?0.7:0);
 
     const cockpitOverlay=document.getElementById('cockpitOverlay');
     if (cockpitOverlay) cockpitOverlay.classList.toggle('active', !!state.reentry && this.viewMode==='cockpit');
@@ -1910,13 +1929,27 @@ class MissionAutopilot {
 
     if (this.phase==='iss_orbit'){
       this.explain('iss_orbit');
-      const dir = norm3({x:p.u,y:p.v,z:p.w});
-      const steer=p.autopilotSteer(dir);
-      controls.pitch=steer.pitch; controls.yaw=steer.yaw; controls.roll=steer.roll; controls.throttle=0; controls.timeScale=10;
-      if (p.time-this.phaseStart>30){
-        this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
-        this.app.toast.show('🎉 En órbita real, volando en formación cerca de la ISS. Sin acoplamiento todavía.', 8000);
-      }
+      // Fasing simplificado (una unica vez, al entrar aqui): reposicionar la nave
+      // junto a la posicion REAL de la ISS ahora mismo, con velocidad relativa
+      // nula, en vez de solo esperar en una orbita del mismo tipo (altitud e
+      // inclinacion coinciden, pero la fase orbital no -- sin esto la nave podia
+      // quedar a cientos o miles de km de la ISS real, sin ningun mecanismo que
+      // los acercara). Mismo patron ya aceptado en el proyecto (correcciones
+      // instantaneas de rumbo en Apolo, sin gastar combustible). 100m de
+      // distancia inicial y velocidad relativa 0 es exactamente el escenario ya
+      // validado end-to-end del Asistente CW (docking_autopilot.js).
+      const t = p.time;
+      const earthPos = positionOf('earth', t);
+      const issHelio = orbitalObjectPosition(ISS, t);
+      const issPos = { x: issHelio.x-earthPos.x, y: issHelio.y-earthPos.y, z: issHelio.z-earthPos.z };
+      const issVel = orbitalObjectVelocity(ISS, t);
+      const rMag = Math.hypot(issPos.x, issPos.y, issPos.z);
+      const radialDir = { x: issPos.x/rMag, y: issPos.y/rMag, z: issPos.z/rMag };
+      p.x = issPos.x - radialDir.x*100; p.y = issPos.y - radialDir.y*100; p.z = issPos.z - radialDir.z*100;
+      p.u = issVel.x; p.v = issVel.y; p.w = issVel.z;
+      this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
+      this.app.toast.show('🛰️ Fasing completado — la ISS está a solo 100 m. ¡Usa el Asistente CW para acoplar!', 8000);
+      controls.throttle=0; controls.pitch=0; controls.yaw=0; controls.roll=0; controls.timeScale=1;
       return controls;
     }
 
@@ -2216,11 +2249,37 @@ class RocketSimApp {
     this.toast=new ToastSystem();
     this.hasOrbited=false; this.inReentry=false; this.hasBeenHigh=false;
     this.missionAuto = new MissionAutopilot(this);
+    if (typeof DockingAutopilot !== 'undefined') {
+      this.dockingAuto = new DockingAutopilot.Autopilot(this);
+    } else {
+      this.dockingAuto = null;
+    }
     this.mapOpen=false; this.mapZoomVal=0.15; this.mapCenterMode='sun';
     // Enganche generico de misiones: el motor no sabe nada de "Apolo 11" ni de ningun otro
     // escenario concreto. Si el archivo que carga motor.js define window.MISSION_CONFIG
     // antes de esta linea, se activa el modo mision; si no, es el sandbox de siempre.
     this.mission = window.MISSION_CONFIG || null;
+    // En iss.html, la ISS visible es la de iss.js. El HUD de acoplamiento debe
+    // medir contra ella, no contra la ISS simplificada de DOCKING_TARGETS.
+    if (this.mission && this.mission.type === 'iss'
+        && typeof orbitalObjectPosition === 'function'
+        && typeof orbitalObjectVelocity === 'function'
+        && typeof positionOf === 'function'
+        && typeof ISS !== 'undefined') {
+      this.physics.setDockingTargetResolver((target, t) => {
+        if (target.id !== 'iss') return dockingTargetState(target, t);
+        const earthPos = positionOf('earth', t);
+        const posHelio = orbitalObjectPosition(ISS, t);
+        return {
+          pos: {
+            x: posHelio.x - earthPos.x,
+            y: posHelio.y - earthPos.y,
+            z: posHelio.z - earthPos.z
+          },
+          vel: orbitalObjectVelocity(ISS, t)
+        };
+      });
+    }
     if (this.mission){
       if (this.mission.physicsStack){
         this.physics.stack = new StageStack(this.mission.physicsStack);
@@ -2313,12 +2372,25 @@ class RocketSimApp {
     });
     document.getElementById('btnDock').addEventListener('click',()=>{
       const ok=this.physics.tryDock();
+      if (ok && this.dockingAuto && this.dockingAuto.isActive()) {
+        this.dockingAuto.deactivate();
+      }
       this.toast.show(ok?'🔗 Acoplado':'⚠️ Fuera de tolerancia', 3000);
     });
     document.getElementById('btnUndock').addEventListener('click',()=>{
       this.physics.undock();
       this.toast.show('🔓 Separado', 2000);
     });
+    const btnCW = document.getElementById('btnCW');
+    if (btnCW && this.dockingAuto) {
+      btnCW.addEventListener('click', () => {
+        if (this.dockingAuto.isActive()) {
+          this.dockingAuto.deactivate('🛰️ Asistente CW detenido');
+        } else {
+          this.dockingAuto.activate();
+        }
+      });
+    }
     document.getElementById('btnEngineChem').addEventListener('click',()=>{
       this.physics.setEngine('chemical');
       document.getElementById('btnEngineChem').classList.add('active');
@@ -2619,9 +2691,31 @@ class RocketSimApp {
         document.getElementById('dhName').textContent=info.target.name;
         document.getElementById('dhDist').textContent=formatDistance(info.dist);
         document.getElementById('dhSpeed').textContent=info.relSpeed.toFixed(2)+' m/s';
+        const cwActive = this.dockingAuto && this.dockingAuto.isActive();
         document.getElementById('btnDock').style.display = info.canDock ? 'block' : 'none';
         document.getElementById('btnUndock').style.display='none';
       }
+    }
+    // Boton del Asistente CW: visible solo en la mision ISS, si hay un objetivo
+    // cerca o el asistente esta activo. En pro.html/apolo11.html, el objetivo
+    // que ve nearestDockingInfo() es la ISS-fantasma del sandbox (sin inclinacion),
+    // distinta de la ISS real que usa el controlador CW -- no debe mostrarse ahi.
+    const btnCWEl = document.getElementById('btnCW');
+    if (btnCWEl && this.dockingAuto && this.mission && this.mission.type === 'iss') {
+      const cercaISS = info && info.dist < 200;
+      if (this.dockingAuto.isActive()) {
+        btnCWEl.style.display = 'block';
+        btnCWEl.textContent = '⏹ Detener asistente CW';
+        btnCWEl.className = 'btn btn-danger';
+      } else if (cercaISS) {
+        btnCWEl.style.display = 'block';
+        btnCWEl.textContent = '🛰️ Asistente CW';
+        btnCWEl.className = 'btn btn-warp';
+      } else {
+        btnCWEl.style.display = 'none';
+      }
+    } else if (btnCWEl) {
+      btnCWEl.style.display = 'none';
     }
 
     // Pista contextual: cambia sola segun la fase de vuelo, para no depender de un consejo fijo
@@ -2668,7 +2762,15 @@ class RocketSimApp {
     // vaya el ordenador dibujando la escena 3D) rompia esa precision en equipos mas lentos.
 
     let state=null;
-    if (this.missionAuto.active){
+    if (this.dockingAuto && this.dockingAuto.isActive()){
+      const autoControls = this.dockingAuto.step();
+      if (autoControls) {
+        this.controls = autoControls;
+        state = this.physics.step(FIXED_DT, autoControls);
+      } else {
+        state = this.physics.getState();
+      }
+    } else if (this.missionAuto.active){
       if (!this.missionAuto.paused){
         const ticks=Math.max(1,Math.min(20,this.missionAuto.speed||1));
         for (let i=0;i<ticks;i++){
