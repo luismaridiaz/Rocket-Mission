@@ -1301,19 +1301,24 @@ class RocketRenderer3D {
     this.rocketGroup.add(this.lmLegsGroup);
 
     // ---- 5 toberas F-1 en la base (solo visual, un unico motor fisico real) ----
+    // Van dentro de sICGroup (no directamente en rocketGroup): son el motor de la
+    // PRIMERA etapa, y deben ocultarse/caer junto con ella al separarse. Antes se
+    // anadian sueltas a rocketGroup y nunca se ocultaban -- quedaban flotando para
+    // siempre tras la separacion, desconectadas de la capsula (bug real, confirmado
+    // por Luis: "se mueve con la nave, es por donde salen las llamas").
     for (let i=0;i<5;i++){
       const angle=(i/5)*Math.PI*2;
       const r=i===0?0:0.7;
       const f1=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.38,0.55,16),engineMat);
-      f1.position.set(r*Math.cos(angle),-0.15,r*Math.sin(angle)); this.rocketGroup.add(f1);
+      f1.position.set(r*Math.cos(angle),-0.15,r*Math.sin(angle)); this.sICGroup.add(f1);
     }
     const nozzleMat=new THREE.MeshStandardMaterial({color:0x222233,roughness:0.15,metalness:0.98,emissive:0x331100,emissiveIntensity:0.1});
     const nozzle=new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.1,0.4,24),nozzleMat);
-    nozzle.position.y=-0.5; this.rocketGroup.add(nozzle);
+    nozzle.position.y=-0.5; this.sICGroup.add(nozzle);
 
     const glowMat=new THREE.MeshBasicMaterial({color:0xff4400,transparent:true,opacity:0.4,blending:THREE.AdditiveBlending});
     const glow=new THREE.Mesh(new THREE.SphereGeometry(0.7,12,12),glowMat);
-    glow.position.y=-0.6; this.rocketGroup.add(glow); this.engineGlow=glow;
+    glow.position.y=-0.6; this.sICGroup.add(glow); this.engineGlow=glow;
   }
 
   // Modelo de la Vostok 1: esfera de descenso + modulo de instrumentos conico + paracaidas.
