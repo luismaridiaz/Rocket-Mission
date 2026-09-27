@@ -1505,7 +1505,30 @@ class RocketRenderer3D {
     for (const name in this.bodyMeshes){
       const bp = state.bodies[name];
       if (!bp) continue;
-      this.bodyMeshes[name].position.set(bp.x-shipAbs.x, bp.y-shipAbs.y, bp.z-shipAbs.z);
+      const relX=bp.x-shipAbs.x, relY=bp.y-shipAbs.y, relZ=bp.z-shipAbs.z;
+      this.bodyMeshes[name].position.set(relX, relY, relZ);
+      // DEBUG TEMPORAL: si un cuerpo que deberia estar a millones/miles de millones
+      // de km aparece a menos de 50.000 km de la nave, es una senal de bug real.
+      // Se muestra en pantalla (no solo consola) para poder verlo en movil.
+      if (!this._debugClose) this._debugClose = {};
+      const relDist = Math.hypot(relX, relY, relZ);
+      if (relDist < 50000000 && name!=='earth' && name!=='moon'){
+        this._debugClose[name] = relDist;
+      } else {
+        delete this._debugClose[name];
+      }
+    }
+    {
+      const dbgEl = document.getElementById('debugCloseBody');
+      if (dbgEl){
+        const keys = Object.keys(this._debugClose||{});
+        if (keys.length){
+          dbgEl.style.display='block';
+          dbgEl.textContent = 'DEBUG cuerpo cercano anómalo: ' + keys.map(k=>k+'='+(this._debugClose[k]/1000).toFixed(1)+'km').join(', ');
+        } else {
+          dbgEl.style.display='none';
+        }
+      }
     }
     // ---- ISS: posicion orbital real, orientada con el nadir hacia la Tierra ----
     if (this.issGroup && typeof ISS!=='undefined' && typeof orbitalObjectPosition==='function' && state.bodies.earth){
@@ -1851,6 +1874,7 @@ class MissionAutopilot {
   }
   stop(msg){
     this.active = false;
+    this.phase = null;
     this._zeroControls();
     if (msg) this.app.toast.show(msg, 6000);
   }
@@ -2828,7 +2852,7 @@ class RocketSimApp {
     this.checkMissionProgress(state);
     if (this.mission) this.updateMissionHud(state);
     if (this.mapOpen) this.drawMap(state);
-    else this.renderer.update(state, rawDt, this.missionAuto ? this.missionAuto.phase : null);
+    else this.renderer.update(state, rawDt, (this.missionAuto && this.missionAuto.active) ? this.missionAuto.phase : null);
     requestAnimationFrame(()=>this.loop());
   }
   updateMissionHud(state){
