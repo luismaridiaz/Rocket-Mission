@@ -242,9 +242,18 @@ function halleyPosition(t){
 // mision, no solo la etapa activa).
 class StageStack {
   constructor(stages){
-    this.stages = stages && stages.length ? stages.map(s=>({...s})) : [
-      { id:'unica', dryMass:30000, fuelMass:270000, maxFuelMass:270000, thrust:6500000, isp:450 }
-    ];
+    // Cada etapa recuerda su empuje e Isp originales (thrust_base/isp_base): setEngine()
+    // sobrescribe thrust/isp de la etapa actual, y 'Quimico' debe poder volver a ellos.
+    this.stages = stages && stages.length
+      ? stages.map(s=>({
+          ...s,
+          thrust_base: s.thrust_base!==undefined ? s.thrust_base : s.thrust,
+          isp_base:    s.isp_base!==undefined    ? s.isp_base    : s.isp
+        }))
+      : [
+          { id:'unica', dryMass:30000, fuelMass:270000, maxFuelMass:270000,
+            thrust:6500000, isp:450, thrust_base:6500000, isp_base:450 }
+        ];
     this.currentIndex = 0;
     this._totalMaxFuel = this.stages.reduce((a,s)=>a+s.maxFuelMass,0);
     this.justSeparated = null;
@@ -373,10 +382,24 @@ class RocketPhysics {
     this.dockedTo=null;
   }
   setEngine(kind){
-    // Quimico: el de siempre. Nuclear (NTR): mas Isp, algo menos de empuje, solo tiene sentido en el espacio
+    // Nuclear (NTR): mas Isp, algo menos de empuje, solo tiene sentido en el espacio
     // (no se enciende en el lanzamiento, igual que en la vida real por seguridad/radiacion en la atmosfera).
-    if (kind==='nuclear'){ this.engineKind='nuclear'; this.maxThrust=4200000; this.Isp=880; }
-    else { this.engineKind='chemical'; this.maxThrust=6500000; this.Isp=450; }
+    // RCS: empuje bajo (~0,5 m/s2 con la nave de la mision ISS) para la aproximacion final y el
+    // acoplamiento manual; con este empuje la nave no puede despegar.
+    // Quimico: el motor DE LA ETAPA, restaurado desde thrust_base/isp_base (antes fijaba siempre
+    // 6,5 MN y degradaba de forma permanente el empuje de cada mision).
+    if (kind==='nuclear'){
+      this.engineKind='nuclear'; this.maxThrust=4200000; this.Isp=880;
+    } else if (kind==='rcs'){
+      this.engineKind='rcs'; this.maxThrust=55000; this.Isp=290;
+    } else {
+      this.engineKind='chemical';
+      const s=this.stack.current();
+      if (s){
+        if (s.thrust_base!==undefined) this.maxThrust=s.thrust_base;
+        if (s.isp_base!==undefined) this.Isp=s.isp_base;
+      }
+    }
   }
   static targetAngles(d){
     const dy=Math.max(-1,Math.min(1,d.y));
@@ -2068,7 +2091,7 @@ class MissionAutopilot {
       p.x = issPos.x - radialDir.x*100; p.y = issPos.y - radialDir.y*100; p.z = issPos.z - radialDir.z*100;
       p.u = issVel.x; p.v = issVel.y; p.w = issVel.z;
       this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
-      this.app.toast.show('🛰️ Fasing completado — la ISS está a solo 100 m. ¡Usa el Asistente CW para acoplar!', 8000);
+      this.app.toast.show('🛰️ Fasing completado — la ISS está a solo 100 m. ¡Usa el Acople automático para acercarte!', 8000);
       controls.throttle=0; controls.pitch=0; controls.yaw=0; controls.roll=0; controls.timeScale=1;
       return controls;
     }
@@ -2450,6 +2473,9 @@ class RocketSimApp {
     });
     document.getElementById('btnReset').addEventListener('click',()=>{
       this.physics.reset();
+      // Reset = vuelo nuevo: motor quimico de la mision (si no, RCS/Nuclear seguian activos en
+      // la plataforma y la nave no podia despegar). activateEngine se define mas abajo, en setupUI.
+      activateEngine('chemical');
       this.hasBeenHigh=false;
       if (this.missionAuto.active){
         this.missionAuto.stop();
@@ -2495,22 +2521,27 @@ class RocketSimApp {
     if (btnCW && this.dockingAuto) {
       btnCW.addEventListener('click', () => {
         if (this.dockingAuto.isActive()) {
-          this.dockingAuto.deactivate('🛰️ Asistente CW detenido');
+          this.dockingAuto.deactivate('🛰️ Acople automático detenido');
         } else {
           this.dockingAuto.activate();
         }
       });
     }
-    document.getElementById('btnEngineChem').addEventListener('click',()=>{
-      this.physics.setEngine('chemical');
-      document.getElementById('btnEngineChem').classList.add('active');
-      document.getElementById('btnEngineNuke').classList.remove('active');
-    });
-    document.getElementById('btnEngineNuke').addEventListener('click',()=>{
-      this.physics.setEngine('nuclear');
-      document.getElementById('btnEngineNuke').classList.add('active');
-      document.getElementById('btnEngineChem').classList.remove('active');
-    });
+    const engineBtns = {
+      chemical: document.getElementById('btnEngineChem'),
+      nuclear:  document.getElementById('btnEngineNuke'),
+      rcs:      document.getElementById('btnEngineRCS')   // solo existe en iss.html
+    };
+    const activateEngine = (kind) => {
+      this.physics.setEngine(kind);
+      Object.keys(engineBtns).forEach(k => {
+        const btn = engineBtns[k];
+        if (btn) btn.classList.toggle('active', k === kind);
+      });
+    };
+    if (engineBtns.chemical) engineBtns.chemical.addEventListener('click', () => activateEngine('chemical'));
+    if (engineBtns.nuclear)  engineBtns.nuclear.addEventListener('click',  () => activateEngine('nuclear'));
+    if (engineBtns.rcs)      engineBtns.rcs.addEventListener('click',      () => activateEngine('rcs'));
     const apBtns={off:document.getElementById('btnApOff'),prograde:document.getElementById('btnApPro'),retrograde:document.getElementById('btnApRetro'),hold:document.getElementById('btnApHold')};
     Object.keys(apBtns).forEach(k=>{
       apBtns[k].addEventListener('click',()=>{
@@ -2806,26 +2837,35 @@ class RocketSimApp {
         document.getElementById('btnUndock').style.display='none';
       }
     }
-    // Boton del Asistente CW: visible solo en la mision ISS, si hay un objetivo
-    // cerca o el asistente esta activo. En pro.html/apolo11.html, el objetivo
-    // que ve nearestDockingInfo() es la ISS-fantasma del sandbox (sin inclinacion),
-    // distinta de la ISS real que usa el controlador CW -- no debe mostrarse ahi.
+    // Boton del Acople automatico (CW): visible solo en la mision ISS, si hay un objetivo
+    // cerca o el acople esta activo. En pro.html/apolo11.html, el objetivo que ve
+    // nearestDockingInfo() es la ISS-fantasma del sandbox (sin inclinacion), distinta de
+    // la ISS real que usa el controlador CW -- no debe mostrarse ahi.
+    // Subtitulo del panel: solo mientras el acople automatico esta en marcha, para que
+    // quede claro que es un modelo simplificado (no simula sensores).
     const btnCWEl = document.getElementById('btnCW');
+    const dhSubEl = document.getElementById('dhSubtitle');
     if (btnCWEl && this.dockingAuto && this.mission && this.mission.type === 'iss') {
       const cercaISS = info && info.dist < 200;
-      if (this.dockingAuto.isActive()) {
+      const cwOn = this.dockingAuto.isActive();
+      if (cwOn) {
         btnCWEl.style.display = 'block';
-        btnCWEl.textContent = '⏹ Detener asistente CW';
+        btnCWEl.textContent = '⏹ Detener acople automático';
         btnCWEl.className = 'btn btn-danger';
       } else if (cercaISS) {
         btnCWEl.style.display = 'block';
-        btnCWEl.textContent = '🛰️ Asistente CW';
+        btnCWEl.textContent = '🛰️ Acople automático';
         btnCWEl.className = 'btn btn-warp';
       } else {
         btnCWEl.style.display = 'none';
       }
-    } else if (btnCWEl) {
-      btnCWEl.style.display = 'none';
+      if (dhSubEl) {
+        dhSubEl.style.display = cwOn ? 'block' : 'none';
+        dhSubEl.textContent = cwOn ? 'acoplamiento automático simplificado · sin sensores Kurs' : '';
+      }
+    } else {
+      if (btnCWEl) btnCWEl.style.display = 'none';
+      if (dhSubEl) dhSubEl.style.display = 'none';
     }
 
     // Pista contextual: cambia sola segun la fase de vuelo, para no depender de un consejo fijo

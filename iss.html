@@ -179,9 +179,10 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
 
     <div class="control-group">
       <label>Motor</label>
-      <div class="btn-row">
+      <div class="btn-row three">
         <button class="btn btn-secondary active" id="btnEngineChem">🔥 Químico</button>
         <button class="btn btn-secondary" id="btnEngineNuke">☢️ Nuclear</button>
+        <button class="btn btn-secondary" id="btnEngineRCS">🛰️ RCS</button>
       </div>
     </div>
     <div class="control-group">
@@ -287,10 +288,11 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
     </div>
     <div class="landing-hud" id="dockHud" style="display:none">
       <div class="lh-title" id="dhTitle">🛰️ ACOPLAMIENTO</div>
+      <div id="dhSubtitle" style="display:none;font-size:9px;color:#8a8a9a;margin-bottom:4px;"></div>
       <div class="lh-row"><span>Objetivo</span><span id="dhName">-</span></div>
       <div class="lh-row"><span>Distancia</span><span id="dhDist">0 m</span></div>
       <div class="lh-row"><span>V. relativa</span><span id="dhSpeed">0 m/s</span></div>
-      <button type="button" class="btn btn-warp" id="btnCW" style="width:100%;margin-top:6px;display:none">🛰️ Asistente CW</button>
+      <button type="button" class="btn btn-warp" id="btnCW" style="width:100%;margin-top:6px;display:none">🛰️ Acople automático</button>
       <button type="button" class="btn btn-success" id="btnDock" style="width:100%;margin-top:6px;display:none">🔗 Acoplar</button>
       <button type="button" class="btn btn-danger" id="btnUndock" style="width:100%;margin-top:6px;display:none">🔓 Separar</button>
     </div>
@@ -378,7 +380,10 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
 
     <h3 style="color:var(--accent);margin:14px 0 6px;">🎯 Piloto automático de misión: qué es física real y qué no</h3>
     <p><b>Física real de verdad</b> (pasa por el motor, gasta combustible según la ecuación del cohete): el despegue con giro gravitatorio, la espera hasta el apoastro, y la circularización en el apoastro — las tres son quemas reales, comprobadas con los elementos orbitales de la nave (perigeo, apogeo, excentricidad), no con un simple aviso de "ya estás en órbita".</p>
-    <p><b>Sin acoplamiento en el piloto automático de ascenso</b>: la Fase 1 (despegue, órbita real, ajuste de fase con la ISS) es física real y automática. Acoplar de verdad — acercarse hasta el puerto, frenar sin pasarse — es un problema de navegación distinto (encuentro orbital), y para eso existe el <b>🛰️ Asistente CW</b>: aparece junto al panel de acoplamiento cuando estás a menos de 200m, y hace el trabajo fino de la aproximación final. El piloto automático de ascenso te deja a unos 100m de la ISS — desde ahí, el Asistente CW completa el acoplamiento solo.</p>
+    <p><b>Sin acoplamiento en el piloto automático de ascenso</b>: la Fase 1 (despegue, órbita real, ajuste de fase con la ISS) es física real y automática. Acercarte hasta el puerto y frenar sin pasarte es un problema de navegación distinto (encuentro orbital), y para eso existe el <b>🛰️ Acople automático</b>: aparece junto al panel de acoplamiento cuando estás a menos de 200 m y hace el trabajo fino de la aproximación final. El piloto automático de ascenso te deja a unos 100 m de la ISS; desde ahí, el Acople automático te lleva a menos de 1 m con velocidad casi nula, y el acoplamiento lo confirmas tú con el botón "Acoplar".</p>
+
+    <h3 style="color:var(--accent);margin:14px 0 6px;">🛰️ Acople automático (simplificado)</h3>
+    <p>El botón "🛰️ Acople automático" activa un controlador de rendezvous que lleva la nave a menos de 1 m de la ISS con velocidad casi nula. Es un <b>modelo simplificado</b>: no simula el radar Kurs ni el LIDAR, y el controlador conoce la posición y velocidad de la ISS de forma exacta (sin ruido, sin tiempo de adquisición). Corresponde al <b>acoplamiento automático</b> que usan Progress o ATV en la realidad, pero sin su capa de sensores.</p>
 
     <h3 style="color:var(--accent);margin:14px 0 6px;">🛰️ Por qué la inclinación de la ISS no es la real</h3>
     <p><b>Dato real</b>: la ISS orbita inclinada 51,64° respecto al ecuador — el compromiso entre lo que Rusia y EEUU podían lanzar cada uno desde sus propios cosmódromos.</p>
@@ -402,7 +407,7 @@ input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow
 window.MISSION_CONFIG = {
   type: 'iss',
   title: 'Estación Espacial Internacional',
-  briefing: 'Alcanza una órbita terrestre real cerca de la Estación Espacial Internacional, a 408 km de altitud — la misma altura a la que orbita de verdad. El piloto automático te dejará a unos 100 metros de ella; desde ahí, usa el 🛰️ Asistente CW (aparece junto al panel de acoplamiento) para completar el encuentro y acoplarte. Dato real: la ISS orbita inclinada 51,64° respecto al ecuador; aquí usa 5,2° (la latitud de Kourou) para que sea alcanzable sin gastar combustible en un cambio de plano — el mismo compromiso que ya se hace con la Luna en la misión Apolo 11.',
+  briefing: 'Alcanza una órbita terrestre real cerca de la Estación Espacial Internacional, a 408 km de altitud — la misma altura a la que orbita de verdad. El piloto automático te dejará a unos 100 metros de ella; desde ahí, usa el 🛰️ Acople automático (simplificado; aparece junto al panel de acoplamiento) para completar el encuentro y acoplarte. Dato real: la ISS orbita inclinada 51,64° respecto al ecuador; aquí usa 5,2° (la latitud de Kourou) para que sea alcanzable sin gastar combustible en un cambio de plano — el mismo compromiso que ya se hace con la Luna en la misión Apolo 11.',
   physicsStack: [
     { id:'iss-ship', dryMass:7500, fuelMass:950000, maxFuelMass:950000, thrust:20664765, isp:450 }
   ], // probado de extremo a extremo: ascenso + coast a apoastro + circularizacion real

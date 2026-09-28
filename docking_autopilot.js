@@ -105,7 +105,7 @@ const DockingAutopilot = (() => {
       this._lastDecisionT = -1e9;
       this._totalFrames = 0;
       this._log = [];
-      if (this.app.toast) this.app.toast.show('🛰️ Asistente CW activado', 3000);
+      if (this.app.toast) this.app.toast.show('🛰️ Acople automático activado', 3000);
       return true;
     }
 
@@ -144,7 +144,7 @@ const DockingAutopilot = (() => {
       if (!p) return null;
 
       if (!p._lastState || p._lastState.bodyName !== 'earth') {
-        this.deactivate('🛰️ CW desactivado (fuera de la Tierra)');
+        this.deactivate('🛰️ Acople automático desactivado (fuera de la Tierra)');
         return null;
       }
 
@@ -152,7 +152,7 @@ const DockingAutopilot = (() => {
       this._tCW += FIXED_DT;
       this._totalFrames++;
       if (this._totalFrames > this.cfg.maxFrames) {
-        this.deactivate('🛰️ CW: tope de frames alcanzado');
+        this.deactivate('🛰️ Acople automático: tiempo máximo alcanzado');
         return null;
       }
 
@@ -182,7 +182,7 @@ const DockingAutopilot = (() => {
       );
       if (!plan) {
         this._log.push(`t=0 PLAN falló (solver null)`);
-        this.deactivate('🛰️ CW: solver falló, modo cancelado');
+        this.deactivate('🛰️ Acople automático: no se pudo calcular la maniobra, cancelado');
         return null;
       }
 
@@ -252,7 +252,7 @@ const DockingAutopilot = (() => {
           this._finalBurn = false;
           this._pushLog(`t=${this._tCW.toFixed(2)} BURN FINAL completo`);
           this.state = 'DONE';
-          this.deactivate('🛰️ Asistente CW completado');
+          this.deactivate('🛰️ Acople automático completado');
           return { throttle, pitch: steer.pitch, yaw: steer.yaw, roll: steer.roll, timeScale: 1 };
         }
         this.state = 'WAITING';
@@ -297,7 +297,7 @@ const DockingAutopilot = (() => {
       if (dist < this.cfg.arrivalDist && speed < this.cfg.arrivalVel) {
         this._pushLog(`t=${this._tCW.toFixed(2)} LLEGADA prematura`);
         this.state = 'DONE';
-        this.deactivate('🛰️ Asistente CW completado');
+        this.deactivate('🛰️ Acople automático completado');
         return { throttle: 0, pitch: 0, yaw: 0, roll: 0, timeScale: 1 };
       }
 
@@ -319,7 +319,7 @@ const DockingAutopilot = (() => {
           return this._stepBurning(p, dt);
         }
         this.state = 'DONE';
-        this.deactivate('🛰️ Asistente CW completado');
+        this.deactivate('🛰️ Acople automático completado');
         return { throttle: 0, pitch: 0, yaw: 0, roll: 0, timeScale: 1 };
       }
 
@@ -372,7 +372,7 @@ const DockingAutopilot = (() => {
       if (dist < this.cfg.arrivalDist && speed < this.cfg.arrivalVel) {
         this._pushLog(`t=${this._tCW.toFixed(2)} LLEGADA FINAL: dist=${dist.toFixed(4)} speed=${speed.toFixed(4)}`);
         this.state = 'DONE';
-        this.deactivate('🛰️ Asistente CW completado');
+        this.deactivate('🛰️ Acople automático completado');
         return { throttle: 0, pitch: 0, yaw: 0, roll: 0, timeScale: 1 };
       }
 
