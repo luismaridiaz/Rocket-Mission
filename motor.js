@@ -145,6 +145,57 @@ const DOCKING_TARGETS = [
 ];
 const DOCK_MAX_DIST = 15; // metros
 const DOCK_MAX_SPEED = 0.3; // m/s
+
+// ---- Puertos de acoplamiento de la ISS (una unica fuente de verdad: los usa buildISS para
+// dibujar los anillos y la fisica para colocar la nave acoplada) ----
+const ISS_MODEL_U = 1;
+const ISS_MODEL_ZC = 0.8; // factor de compresion de longitud del cluster de modulos
+const ISS_PORTS_DEF = [
+  {pos:{x:0,y:0,z:-28*ISS_MODEL_U*ISS_MODEL_ZC},type:'ruso',id:'Zvezda-aft'},
+  {pos:{x:0,y:2.5*ISS_MODEL_U,z:-4*ISS_MODEL_U*ISS_MODEL_ZC},type:'ruso',id:'Poisk-zenith'},
+  {pos:{x:4*ISS_MODEL_U,y:0,z:15*ISS_MODEL_U*ISS_MODEL_ZC},type:'americano',id:'Harmony-forward'},
+  {pos:{x:0,y:4.5*ISS_MODEL_U,z:15*ISS_MODEL_U*ISS_MODEL_ZC},type:'americano',id:'Harmony-zenith'},
+  {pos:{x:0,y:-4.5*ISS_MODEL_U,z:15*ISS_MODEL_U*ISS_MODEL_ZC},type:'americano',id:'Harmony-nadir'},
+  {pos:{x:4*ISS_MODEL_U,y:0,z:-16*ISS_MODEL_U*ISS_MODEL_ZC},type:'americano',id:'Unity-nadir'}
+];
+// Direccion hacia fuera de un puerto (marco local de la ISS): radial respecto al eje
+// longitudinal (z) del cluster de modulos; para el puerto del extremo, a lo largo del eje.
+function issPortOutward(pos){
+  const m=Math.hypot(pos.x,pos.y);
+  if (m>1e-6) return {x:pos.x/m, y:pos.y/m, z:0};
+  return {x:0, y:0, z:pos.z<0?-1:1};
+}
+// Punta del cono de la capsula en el eje local del cohete (capsuleTop: y=8.18, alto 0.75)
+// y holgura entre la punta y el anillo del puerto.
+const DOCK_CONTACT_Y = 8.555;
+const DOCK_GAP = 0.3;
+// Marco local de la ISS en el mundo: identico al que el render aplica a issGroup
+// (arriba = radial saliente de la Tierra; ver RocketRenderer3D.update).
+function issBasisAt(issGeoPos){
+  const up=norm3(issGeoPos);
+  let right=cross3(up,{x:0,y:0,z:1});
+  right = dot3(right,right)<1e-12 ? {x:1,y:0,z:0} : norm3(right);
+  const fwd=norm3(cross3(right,up));
+  return {right, up, fwd};
+}
+function issLocalToWorld(b,v){
+  return {
+    x:b.right.x*v.x+b.up.x*v.y+b.fwd.x*v.z,
+    y:b.right.y*v.x+b.up.y*v.y+b.fwd.y*v.z,
+    z:b.right.z*v.x+b.up.z*v.y+b.fwd.z*v.z
+  };
+}
+// Resolver de objetivo de acoplamiento para la mision ISS: la ISS REAL (con inclinacion),
+// con su marco local y su radio orbital (la fisica los necesita estando acoplado).
+function makeIssDockingResolver(){
+  return (target, t) => {
+    if (target.id !== 'iss') return dockingTargetState(target, t);
+    const earthPos = positionOf('earth', t);
+    const posHelio = orbitalObjectPosition(ISS, t);
+    const pos = { x:posHelio.x-earthPos.x, y:posHelio.y-earthPos.y, z:posHelio.z-earthPos.z };
+    return { pos, vel: orbitalObjectVelocity(ISS, t), r: Math.hypot(pos.x,pos.y,pos.z), basis: issBasisAt(pos) };
+  };
+}
 function dockingTargetState(target, t){
   const parent = SOLAR_BODIES[target.parent];
   const r = parent.radius + target.altitude;
@@ -234,6 +285,7 @@ class RocketPhysics {
     this.G=6.67430e-11;
     this._lastState={altitude:0, bodyName:'earth', dist:SOLAR_BODIES.earth.radius, gMag:9.81, reentryFlag:false};
     this._dockingTargetResolver = null;
+    this._dockPortIdx = null; this._dockOutward = null;
   }
   get dryMass(){ return this.stack.dryMass; }
   get fuelMass(){ return this.stack.fuelMass; }
@@ -287,13 +339,37 @@ class RocketPhysics {
   }
   tryDock(){
     const info=this.nearestDockingInfo();
-    if (info && info.canDock){ this.dockedTo=info.target.id; return true; }
+    if (info && info.canDock){
+      this.dockedTo=info.target.id;
+      // Si el objetivo trae su marco local (la ISS de la mision ISS), se acopla al puerto
+      // MAS CERCANO a donde esta la nave, no al centro de la estacion.
+      this._dockPortIdx=null;
+      const ts=info.ts;
+      if (ts && ts.basis){
+        const d={x:this.x-ts.pos.x, y:this.y-ts.pos.y, z:this.z-ts.pos.z};
+        let bestD=Infinity;
+        ISS_PORTS_DEF.forEach((port,i)=>{
+          const w=issLocalToWorld(ts.basis, port.pos);
+          const dd=Math.hypot(d.x-w.x, d.y-w.y, d.z-w.z);
+          if (dd<bestD){ bestD=dd; this._dockPortIdx=i; }
+        });
+      }
+      return true;
+    }
     return false;
   }
   undock(){
     if (!this.dockedTo) return;
-    const heading=FRAME_ROTATION(RocketPhysics.rotateVec(0,1,0,this.pitch,this.yaw,this.roll));
-    this.u+=heading.x*1.0; this.v+=heading.y*1.0; this.w+=heading.z*1.0; // pequeño empujon de separacion
+    if (this._dockOutward){
+      // Acoplado a un puerto: el empujon de separacion va hacia FUERA del puerto
+      // (el morro apunta al puerto, empujar hacia el morro seria meterse en la estacion).
+      const o=this._dockOutward;
+      this.u+=o.x*1.0; this.v+=o.y*1.0; this.w+=o.z*1.0;
+    } else {
+      const heading=FRAME_ROTATION(RocketPhysics.rotateVec(0,1,0,this.pitch,this.yaw,this.roll));
+      this.u+=heading.x*1.0; this.v+=heading.y*1.0; this.w+=heading.z*1.0; // pequeño empujon de separacion
+    }
+    this._dockPortIdx=null; this._dockOutward=null;
     this.dockedTo=null;
   }
   setEngine(kind){
@@ -357,10 +433,30 @@ class RocketPhysics {
         const ts = this._dockingTargetResolver
           ? this._dockingTargetResolver(target, this.time)
           : dockingTargetState(target, this.time);
-        this.x=ts.pos.x; this.y=ts.pos.y; this.z=ts.pos.z;
+        let px=ts.pos.x, py=ts.pos.y, pz=ts.pos.z;
+        this._dockOutward=null;
+        if (ts.basis && this._dockPortIdx!=null){
+          // Nave pegada al puerto: fuera del anillo, a lo largo de su eje, con el morro
+          // (+y local del cohete) apuntando al puerto. El render dibuja el cohete con
+          // estos mismos angulos (orden YXZ), y con roll=0 la direccion del morro es
+          // (sin p * sin y, cos p, sin p * cos y).
+          const port=ISS_PORTS_DEF[this._dockPortIdx];
+          const pw=issLocalToWorld(ts.basis, port.pos);
+          const ow=issLocalToWorld(ts.basis, issPortOutward(port.pos));
+          const off=DOCK_CONTACT_Y+DOCK_GAP;
+          px+=pw.x+ow.x*off; py+=pw.y+ow.y*off; pz+=pw.z+ow.z*off;
+          const hx=-ow.x, hy=-ow.y, hz=-ow.z;
+          this.pitch=Math.acos(Math.max(-1,Math.min(1,hy)));
+          this.yaw=Math.atan2(hx,hz);
+          this.roll=0;
+          this.pitchRate=0; this.yawRate=0; this.rollRate=0;
+          this._dockOutward=ow;
+        }
+        this.x=px; this.y=py; this.z=pz;
         this.u=ts.vel.x; this.v=ts.vel.y; this.w=ts.vel.z;
         const parent=SOLAR_BODIES[target.parent];
-        this._lastState={altitude:ts.r-parent.radius, bodyName:target.parent, dist:ts.r, gMag:6.67430e-11*parent.mass/(ts.r*ts.r), reentryFlag:false};
+        const rr = ts.r!==undefined ? ts.r : Math.hypot(ts.pos.x,ts.pos.y,ts.pos.z);
+        this._lastState={altitude:rr-parent.radius, bodyName:target.parent, dist:rr, gMag:6.67430e-11*parent.mass/(rr*rr), reentryFlag:false};
         return this.getState();
       }
     }
@@ -570,7 +666,7 @@ class RocketPhysics {
     this.pitchRate=0;this.rollRate=0;this.yawRate=0;
     this.throttle=0;this.stack.reset();this.time=0;
     this.hyperspace=false;this.warp=false;this.particles=[];this.trail=[];
-    this.shakeIntensity=0;this.rpm=0;this.dockedTo=null;
+    this.shakeIntensity=0;this.rpm=0;this.dockedTo=null;this._dockPortIdx=null;this._dockOutward=null;
     this._lastState={altitude:0, bodyName:'earth', dist:SOLAR_BODIES.earth.radius, gMag:9.81, reentryFlag:false};
   }
 }
@@ -1074,7 +1170,7 @@ class RocketRenderer3D {
   // primer calculo (192m) para acercarla a la real (~150-160m) -- el propio diseño ya
   // avisaba de que probablemente haria falta este ajuste.
   buildISS(group){
-    const U=1;
+    const U=ISS_MODEL_U;
     const white=new THREE.MeshStandardMaterial({color:0xe8e8e0,roughness:0.6,metalness:0.3});
     const offWhite=new THREE.MeshStandardMaterial({color:0xd0d0c8,roughness:0.7,metalness:0.2});
     const gold=new THREE.MeshStandardMaterial({color:0xc9a15a,roughness:0.5,metalness:0.7});
@@ -1084,7 +1180,7 @@ class RocketRenderer3D {
     const panelLine=new THREE.MeshBasicMaterial({color:0x2a4a80,side:THREE.DoubleSide});
     const glowRing=new THREE.MeshBasicMaterial({color:0x00ff88,transparent:true,opacity:0.85});
     const glowRus=new THREE.MeshBasicMaterial({color:0xff8800,transparent:true,opacity:0.85});
-    const ZC=0.8; // factor de compresion de longitud del cluster de modulos
+    const ZC=ISS_MODEL_ZC; // factor de compresion de longitud del cluster de modulos
 
     // ---- Viga (truss), 11 segmentos ----
     const trussGroup=new THREE.Group();
@@ -1170,19 +1266,14 @@ class RocketRenderer3D {
     }
 
     // ---- Puertos de acoplamiento: 2 rusos (naranja), 4 internacionales (verde) ----
-    const ports=[
-      {pos:{x:0,y:0,z:-28*U*ZC},type:'ruso',id:'Zvezda-aft'},
-      {pos:{x:0,y:2.5*U,z:-4*U*ZC},type:'ruso',id:'Poisk-zenith'},
-      {pos:{x:4*U,y:0,z:15*U*ZC},type:'americano',id:'Harmony-forward'},
-      {pos:{x:0,y:4.5*U,z:15*U*ZC},type:'americano',id:'Harmony-zenith'},
-      {pos:{x:0,y:-4.5*U,z:15*U*ZC},type:'americano',id:'Harmony-nadir'},
-      {pos:{x:4*U,y:0,z:-16*U*ZC},type:'americano',id:'Unity-nadir'}
-    ];
+    const ports=ISS_PORTS_DEF;
     this.issPorts=[];
     for (const p of ports){
       const ringMat = p.type==='ruso' ? glowRus : glowRing;
       const ring=new THREE.Mesh(new THREE.TorusGeometry(0.55*U,0.07*U,8,20),ringMat);
-      ring.rotation.y=Math.PI/2;
+      // el anillo mira a lo largo del eje de su puerto (el toro tiene su eje en z)
+      const po=issPortOutward(p.pos);
+      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), new THREE.Vector3(po.x,po.y,po.z));
       ring.position.set(p.pos.x,p.pos.y,p.pos.z);
       group.add(ring);
       this.issPorts.push({ id:p.id, type:p.type, localPos:new THREE.Vector3(p.pos.x,p.pos.y,p.pos.z), worldPos:new THREE.Vector3() });
@@ -1512,30 +1603,7 @@ class RocketRenderer3D {
     for (const name in this.bodyMeshes){
       const bp = state.bodies[name];
       if (!bp) continue;
-      const relX=bp.x-shipAbs.x, relY=bp.y-shipAbs.y, relZ=bp.z-shipAbs.z;
-      this.bodyMeshes[name].position.set(relX, relY, relZ);
-      // DEBUG TEMPORAL: si un cuerpo que deberia estar a millones/miles de millones
-      // de km aparece a menos de 50.000 km de la nave, es una senal de bug real.
-      // Se muestra en pantalla (no solo consola) para poder verlo en movil.
-      if (!this._debugClose) this._debugClose = {};
-      const relDist = Math.hypot(relX, relY, relZ);
-      if (relDist < 50000000 && name!=='earth' && name!=='moon'){
-        this._debugClose[name] = relDist;
-      } else {
-        delete this._debugClose[name];
-      }
-    }
-    {
-      const dbgEl = document.getElementById('debugCloseBody');
-      if (dbgEl){
-        const keys = Object.keys(this._debugClose||{});
-        if (keys.length){
-          dbgEl.style.display='block';
-          dbgEl.textContent = 'DEBUG cuerpo cercano anómalo: ' + keys.map(k=>k+'='+(this._debugClose[k]/1000).toFixed(1)+'km').join(', ');
-        } else {
-          dbgEl.style.display='none';
-        }
-      }
+      this.bodyMeshes[name].position.set(bp.x-shipAbs.x, bp.y-shipAbs.y, bp.z-shipAbs.z);
     }
     // ---- ISS: posicion orbital real, orientada con el nadir hacia la Tierra ----
     if (this.issGroup && typeof ISS!=='undefined' && typeof orbitalObjectPosition==='function' && state.bodies.earth){
@@ -2318,19 +2386,7 @@ class RocketSimApp {
         && typeof orbitalObjectVelocity === 'function'
         && typeof positionOf === 'function'
         && typeof ISS !== 'undefined') {
-      this.physics.setDockingTargetResolver((target, t) => {
-        if (target.id !== 'iss') return dockingTargetState(target, t);
-        const earthPos = positionOf('earth', t);
-        const posHelio = orbitalObjectPosition(ISS, t);
-        return {
-          pos: {
-            x: posHelio.x - earthPos.x,
-            y: posHelio.y - earthPos.y,
-            z: posHelio.z - earthPos.z
-          },
-          vel: orbitalObjectVelocity(ISS, t)
-        };
-      });
+      this.physics.setDockingTargetResolver(makeIssDockingResolver());
     }
     if (this.mission){
       if (this.mission.physicsStack){
@@ -2423,25 +2479,13 @@ class RocketSimApp {
       this.physics.refuel();
     });
     document.getElementById('btnDock').addEventListener('click',()=>{
-      const infoAntes = this.physics.nearestDockingInfo();
       const ok=this.physics.tryDock();
       if (ok && this.dockingAuto) {
         this.dockingAuto.deactivate(); // deactivate() ya comprueba internamente si seguia activo
       }
       this.toast.show(ok?'🔗 Acoplado':'⚠️ Fuera de tolerancia', 3000);
-      if (ok) {
-        // Forzar el refresco del HUD YA, en el mismo clic, sin esperar al siguiente
-        // fotograma de render -- elimina cualquier posible demora o inconsistencia
-        // entre el clic y lo que se ve en pantalla.
-        this.updateUI(this.physics.getState());
-      }
-      // DEBUG TEMPORAL: valores exactos con los que se evaluo tryDock() en este clic
-      // (el HUD normal muestra el fotograma anterior, este es el instante real del clic).
-      const dbgEl = document.getElementById('debugCloseBody');
-      if (dbgEl && infoAntes){
-        dbgEl.style.display='block';
-        dbgEl.textContent = 'DEBUG clic Acoplar: dist='+infoAntes.dist.toFixed(3)+'m relSpeed='+infoAntes.relSpeed.toFixed(3)+'m/s canDock='+infoAntes.canDock+' dockedTo(despues)='+this.physics.dockedTo+' cwActive(despues)='+(this.dockingAuto&&this.dockingAuto.isActive());
-      }
+      // Refresco del HUD en el mismo clic, sin esperar al siguiente fotograma.
+      if (ok) this.updateUI(this.physics.getState());
     });
     document.getElementById('btnUndock').addEventListener('click',()=>{
       this.physics.undock();
