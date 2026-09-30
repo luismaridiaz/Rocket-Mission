@@ -1777,6 +1777,7 @@ class RocketRenderer3D {
       // distancia lateral que su propio tamano, por la deriva natural del ascenso.
       const cerca = state.body==='earth' && state.altitude<1000;
       this.launchPadGroup.visible = cerca;
+      let dbgRel=null;
       if (cerca){
         const padLocal = launchPadPositionAt(state.time); // respecto al centro de la Tierra, con rotacion terrestre
         const ep = state.bodies.earth;
@@ -1784,7 +1785,17 @@ class RocketRenderer3D {
         const relBruto = { x: padAbs.x-shipAbs.x, y: padAbs.y-shipAbs.y, z: padAbs.z-shipAbs.z };
         const rel = FRAME_ROTATION_INV(relBruto); // al marco del cohete: Y=altitud, X/Z=deriva lateral
         this.launchPadGroup.position.set(rel.x, rel.y, rel.z);
+        dbgRel=rel;
       }
+      // DEBUG TEMPORAL
+      const dbgEl=document.getElementById('debugPad');
+      if (dbgEl){
+        dbgEl.style.display='block';
+        dbgEl.textContent='DEBUG plataforma: existe=si visible='+cerca+' body='+state.body+' alt='+state.altitude.toFixed(1)+'m pos='+(dbgRel?('('+dbgRel.x.toFixed(2)+','+dbgRel.y.toFixed(2)+','+dbgRel.z.toFixed(2)+')'):'n/a')+' camDist='+this.camera.position.length().toFixed(1);
+      }
+    } else {
+      const dbgEl=document.getElementById('debugPad');
+      if (dbgEl){ dbgEl.style.display='block'; dbgEl.textContent='DEBUG plataforma: NO EXISTE this.launchPadGroup'; }
     }
     if (this.baikonurMarker && state.bodies.earth){
       const ep=state.bodies.earth;
