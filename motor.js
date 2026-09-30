@@ -1650,9 +1650,9 @@ class RocketRenderer3D {
     this.launchPadGroup=new THREE.Group();
 
     const base=new THREE.Mesh(new THREE.BoxGeometry(5,0.5,5),padMat);
-    base.position.y=-1.15; this.launchPadGroup.add(base);
+    base.position.y=-0.95; this.launchPadGroup.add(base); // superficie en y=-0.7, margen 0.1 con el motor (-0.6)
 
-    const TOWER_X=3.0, TOWER_HALF=0.35, TOWER_TOP=9.0, TOWER_BASE=-0.9;
+    const TOWER_X=3.0, TOWER_HALF=0.35, TOWER_TOP=9.0, TOWER_BASE=-0.7;
     const legH=TOWER_TOP-TOWER_BASE;
     for (const sx of [-1,1]) for (const sz of [-1,1]){
       const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,legH,6),towerMat);
@@ -1687,22 +1687,25 @@ class RocketRenderer3D {
     // al aligerarse el cohete (sin motor propio en la realidad). Motor de la Vostok en
     // y=-0.55, colgando libre por debajo del punto de contacto de los brazos -- correcto,
     // en el R-7 real el motor tampoco se apoya en nada.
-    const armMat=new THREE.MeshStandardMaterial({color:0x707068,roughness:0.7,metalness:0.6});
-    const trenchMat=new THREE.MeshStandardMaterial({color:0x2a2a28,roughness:0.8,metalness:0.2});
+    // Primera version practicamente invisible (brazos de 0.06-0.1 de grosor, gris oscuro,
+    // aislados en el espacio sin nada grande cerca que les diera referencia visual) --
+    // agrandado y aclarado de forma sustancial, no un simple retoque.
+    const armMat=new THREE.MeshStandardMaterial({color:0xaaaaa2,roughness:0.6,metalness:0.6});
+    const trenchMat=new THREE.MeshStandardMaterial({color:0x55524c,roughness:0.8,metalness:0.2});
     this.launchPadGroup=new THREE.Group();
 
-    const trench=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,0.5,16),trenchMat);
-    trench.position.y=-0.8; this.launchPadGroup.add(trench);
+    const trench=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.3,0.6,16),trenchMat);
+    trench.position.y=-0.9; this.launchPadGroup.add(trench);
 
-    const R_PIVOT=1.3, Y_PIVOT=-0.7, R_CONTACT=0.85, Y_CONTACT=0.15;
+    const R_PIVOT=1.9, Y_PIVOT=-0.8, R_CONTACT=0.85, Y_CONTACT=0.15;
     const dx=R_CONTACT-R_PIVOT, dy=Y_CONTACT-Y_PIVOT;
     const armLen=Math.hypot(dx,dy), armAngle=Math.atan2(dx,dy);
     for (let i=0;i<4;i++){
       const group=new THREE.Group(); group.rotation.y=i*Math.PI/2;
-      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.1,armLen,8),armMat);
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.24,armLen,8),armMat);
       arm.rotation.z=armAngle; arm.position.set(R_PIVOT+dx/2,Y_PIVOT+dy/2,0);
       group.add(arm);
-      const pad=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8),armMat);
+      const pad=new THREE.Mesh(new THREE.SphereGeometry(0.28,10,10),armMat);
       pad.position.set(R_CONTACT,Y_CONTACT,0); group.add(pad);
       this.launchPadGroup.add(group);
     }
@@ -1715,31 +1718,32 @@ class RocketRenderer3D {
     // plataforma clasica de la Vostok. Acabado mas claro/moderno. Motor de la Soyuz en
     // y=-0.3, bastante mas alto que el de la Vostok, por eso el contacto tambien esta mas
     // arriba (y=0.4 en vez de 0.15).
-    const armMat=new THREE.MeshStandardMaterial({color:0x9a9a92,roughness:0.5,metalness:0.6});
-    const trenchMat=new THREE.MeshStandardMaterial({color:0x3a3a38,roughness:0.8,metalness:0.2});
-    const erectorMat=new THREE.MeshStandardMaterial({color:0x6a7a8a,roughness:0.5,metalness:0.7});
+    // Primera version practicamente invisible, igual que Baikonur -- agrandada y aclarada.
+    const armMat=new THREE.MeshStandardMaterial({color:0xc4c4bc,roughness:0.5,metalness:0.6});
+    const trenchMat=new THREE.MeshStandardMaterial({color:0x5a5852,roughness:0.8,metalness:0.2});
+    const erectorMat=new THREE.MeshStandardMaterial({color:0x8a9aac,roughness:0.5,metalness:0.7});
     this.launchPadGroup=new THREE.Group();
 
-    const trench=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.75,0.4,16),trenchMat);
-    trench.position.y=-0.6; this.launchPadGroup.add(trench);
+    const trench=new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.1,0.5,16),trenchMat);
+    trench.position.y=-0.75; this.launchPadGroup.add(trench);
 
-    const R_PIVOT=1.1, Y_PIVOT=-0.5, R_CONTACT=0.95, Y_CONTACT=0.4;
+    const R_PIVOT=1.7, Y_PIVOT=-0.6, R_CONTACT=0.95, Y_CONTACT=0.4;
     const dx=R_CONTACT-R_PIVOT, dy=Y_CONTACT-Y_PIVOT;
     const armLen=Math.hypot(dx,dy), armAngle=Math.atan2(dx,dy);
     for (let i=0;i<4;i++){
       const group=new THREE.Group(); group.rotation.y=i*Math.PI/2;
-      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,armLen,8),armMat);
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,armLen,8),armMat);
       arm.rotation.z=armAngle; arm.position.set(R_PIVOT+dx/2,Y_PIVOT+dy/2,0);
       group.add(arm);
-      const pad=new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8),armMat);
+      const pad=new THREE.Mesh(new THREE.SphereGeometry(0.24,10,10),armMat);
       pad.position.set(R_CONTACT,Y_CONTACT,0); group.add(pad);
       this.launchPadGroup.add(group);
     }
 
-    const eR_PIVOT=1.6, eY_PIVOT=-0.5, eR_CONTACT=0.9, eY_CONTACT=2.0;
+    const eR_PIVOT=2.3, eY_PIVOT=-0.6, eR_CONTACT=0.9, eY_CONTACT=2.0;
     const edx=eR_CONTACT-eR_PIVOT, edy=eY_CONTACT-eY_PIVOT;
     const eLen=Math.hypot(edx,edy), eAngle=Math.atan2(edx,edy);
-    const erector=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.15,eLen,8),erectorMat);
+    const erector=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.28,eLen,8),erectorMat);
     erector.rotation.z=eAngle; erector.position.set(eR_PIVOT+edx/2,eY_PIVOT+edy/2,0);
     this.launchPadGroup.add(erector);
 
