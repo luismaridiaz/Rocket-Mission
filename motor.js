@@ -1094,27 +1094,12 @@ class RocketRenderer3D {
     this.earth=new THREE.Mesh(new THREE.SphereGeometry(SOLAR_BODIES.earth.radius,64,64),earthMat);
     this.scene.add(this.earth); this.bodyMeshes.earth=this.earth;
 
-    // ---- Plataforma de lanzamiento, comun a las 4 misiones ----
-    // Geometria simple (base + torre de servicio), a la misma escala visual arbitraria que
-    // el cohete (nunca hubo un factor de escala real cohete<->metros en este proyecto, asi
-    // que se dimensiona por comparacion, no por las medidas reales de una torre real).
-    // Se posiciona en update() con rotacion terrestre + conversion de marco (ver
-    // state.launchPadAbs y FRAME_ROTATION_INV) -- sin eso, se veria "al lado" del cohete
-    // en vez de "debajo", y se alejaria mucho mas rapido de lo que sube el cohete.
-    {
-      const padMat=new THREE.MeshStandardMaterial({color:0x6a6a6a,roughness:0.6,metalness:0.5});
-      const padDarkMat=new THREE.MeshStandardMaterial({color:0x3a3a3a,roughness:0.7,metalness:0.3});
-      this.launchPadGroup=new THREE.Group();
-      const base=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.8,0.6,8),padDarkMat);
-      base.position.y=-0.3; this.launchPadGroup.add(base);
-      const tower=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,9,8),padMat);
-      tower.position.set(1.8,4.2,0); this.launchPadGroup.add(tower);
-      for (const h of [1.5,4.0,6.5]){
-        const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,1.6,6),padMat);
-        arm.rotation.z=Math.PI/2; arm.position.set(0.9,h,0); this.launchPadGroup.add(arm);
-      }
-      this.scene.add(this.launchPadGroup);
-    }
+    // Plataforma de lanzamiento: una por mision (ver buildLaunchPad), a la misma escala
+    // visual arbitraria que el cohete (nunca hubo un factor de escala real cohete<->metros
+    // en este proyecto). Se posiciona en update() con rotacion terrestre + conversion de
+    // marco (ver state.launchPadAbs y FRAME_ROTATION_INV) -- sin eso, se veria "al lado" del
+    // cohete en vez de "debajo", y se alejaria mucho mas rapido de lo que sube el cohete.
+    this.buildLaunchPad();
     // Marcadores de Baikonur (despegue) y Smelovka (aterrizaje), solo en la mision Gagarin.
     // Se colocan en el MISMO marco fijo que usa la fisica de la nave (no giran con la textura
     // de la Tierra) para que coincidan siempre con el punto real de despegue/aterrizaje de la
@@ -1630,6 +1615,138 @@ class RocketRenderer3D {
     glow.position.y=-0.3; this.rocketGroup.add(glow); this.engineGlow=glow;
   }
 
+  buildLaunchPad(){
+    const cfg = (typeof window!=='undefined') ? window.MISSION_CONFIG : null;
+    const type = cfg ? cfg.type : null;
+    if (type==='gagarin') this.buildPadBaikonur();
+    else if (type==='iss') this.buildPadSoyuzPad();
+    else if (cfg && cfg.title==='Apolo 11') this.buildPadCanaveral();
+    else this.buildPadGeneric();
+  }
+
+  buildPadGeneric(){
+    // Sandbox (pro.html): plataforma neutra, sin referencia historica concreta.
+    const padMat=new THREE.MeshStandardMaterial({color:0x6a6a6a,roughness:0.6,metalness:0.5});
+    const padDarkMat=new THREE.MeshStandardMaterial({color:0x3a3a3a,roughness:0.7,metalness:0.3});
+    this.launchPadGroup=new THREE.Group();
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.8,0.6,8),padDarkMat);
+    base.position.y=-0.9; this.launchPadGroup.add(base);
+    const tower=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,9,8),padMat);
+    tower.position.set(1.8,3.9,0); this.launchPadGroup.add(tower);
+    for (const h of [1.2,3.7,6.2]){
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,1.6,6),padMat);
+      arm.rotation.z=Math.PI/2; arm.position.set(0.9,h,0); this.launchPadGroup.add(arm);
+    }
+    this.scene.add(this.launchPadGroup);
+  }
+
+  buildPadCanaveral(){
+    // Apolo 11: Complejo 39, Cabo Canaveral. Saturno V (motor a y=-0.6), sin brazos que lo
+    // sujeten -- descansaba sobre la Mobile Launcher Platform, junto a la Launch Umbilical
+    // Tower (torre de celosia abierta, con varios brazos de servicio horizontales).
+    const padMat=new THREE.MeshStandardMaterial({color:0xb5b5a8,roughness:0.6,metalness:0.4});
+    const towerMat=new THREE.MeshStandardMaterial({color:0xcc5522,roughness:0.5,metalness:0.6});
+    const braceMat=new THREE.MeshStandardMaterial({color:0x555550,roughness:0.6,metalness:0.5});
+    this.launchPadGroup=new THREE.Group();
+
+    const base=new THREE.Mesh(new THREE.BoxGeometry(5,0.5,5),padMat);
+    base.position.y=-1.15; this.launchPadGroup.add(base);
+
+    const TOWER_X=3.0, TOWER_HALF=0.35, TOWER_TOP=9.0, TOWER_BASE=-0.9;
+    const legH=TOWER_TOP-TOWER_BASE;
+    for (const sx of [-1,1]) for (const sz of [-1,1]){
+      const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,legH,6),towerMat);
+      leg.position.set(TOWER_X+sx*TOWER_HALF, TOWER_BASE+legH/2, sz*TOWER_HALF);
+      this.launchPadGroup.add(leg);
+    }
+    for (let h=TOWER_BASE+0.8; h<TOWER_TOP; h+=1.2){
+      for (const sz of [-1,1]){
+        const brace=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,TOWER_HALF*2,6),braceMat);
+        brace.rotation.z=Math.PI/2; brace.position.set(TOWER_X,h,sz*TOWER_HALF);
+        this.launchPadGroup.add(brace);
+      }
+      const braceXa=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,TOWER_HALF*2,6),braceMat);
+      braceXa.rotation.x=Math.PI/2; braceXa.position.set(TOWER_X-TOWER_HALF,h,0);
+      this.launchPadGroup.add(braceXa);
+      const braceXb=braceXa.clone(); braceXb.position.x=TOWER_X+TOWER_HALF;
+      this.launchPadGroup.add(braceXb);
+    }
+
+    for (const h of [1.0,3.5,6.0,8.2]){
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,TOWER_X-0.3,8),towerMat);
+      arm.rotation.z=Math.PI/2; arm.position.set(TOWER_X/2-0.15,h,0);
+      this.launchPadGroup.add(arm);
+    }
+    this.scene.add(this.launchPadGroup);
+  }
+
+  buildPadBaikonur(){
+    // Gagarin/Vostok: sitio "Gagarin's Start", Baikonur. El R-7 no se apoya en una
+    // plataforma plana ni tiene torre vertical -- 4 brazos articulados en forma de
+    // "tulipan" sujetan el cuerpo del cohete desde abajo, y se abren solos por contrapeso
+    // al aligerarse el cohete (sin motor propio en la realidad). Motor de la Vostok en
+    // y=-0.55, colgando libre por debajo del punto de contacto de los brazos -- correcto,
+    // en el R-7 real el motor tampoco se apoya en nada.
+    const armMat=new THREE.MeshStandardMaterial({color:0x707068,roughness:0.7,metalness:0.6});
+    const trenchMat=new THREE.MeshStandardMaterial({color:0x2a2a28,roughness:0.8,metalness:0.2});
+    this.launchPadGroup=new THREE.Group();
+
+    const trench=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,0.5,16),trenchMat);
+    trench.position.y=-0.8; this.launchPadGroup.add(trench);
+
+    const R_PIVOT=1.3, Y_PIVOT=-0.7, R_CONTACT=0.85, Y_CONTACT=0.15;
+    const dx=R_CONTACT-R_PIVOT, dy=Y_CONTACT-Y_PIVOT;
+    const armLen=Math.hypot(dx,dy), armAngle=Math.atan2(dx,dy);
+    for (let i=0;i<4;i++){
+      const group=new THREE.Group(); group.rotation.y=i*Math.PI/2;
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.1,armLen,8),armMat);
+      arm.rotation.z=armAngle; arm.position.set(R_PIVOT+dx/2,Y_PIVOT+dy/2,0);
+      group.add(arm);
+      const pad=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8),armMat);
+      pad.position.set(R_CONTACT,Y_CONTACT,0); group.add(pad);
+      this.launchPadGroup.add(group);
+    }
+    this.scene.add(this.launchPadGroup);
+  }
+
+  buildPadSoyuzPad(){
+    // ISS/Soyuz: misma herencia del R-7 (brazos tipo tulipan), mas un brazo erector unico
+    // que la levanta de horizontal a vertical -- el rasgo real que la distingue de la
+    // plataforma clasica de la Vostok. Acabado mas claro/moderno. Motor de la Soyuz en
+    // y=-0.3, bastante mas alto que el de la Vostok, por eso el contacto tambien esta mas
+    // arriba (y=0.4 en vez de 0.15).
+    const armMat=new THREE.MeshStandardMaterial({color:0x9a9a92,roughness:0.5,metalness:0.6});
+    const trenchMat=new THREE.MeshStandardMaterial({color:0x3a3a38,roughness:0.8,metalness:0.2});
+    const erectorMat=new THREE.MeshStandardMaterial({color:0x6a7a8a,roughness:0.5,metalness:0.7});
+    this.launchPadGroup=new THREE.Group();
+
+    const trench=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.75,0.4,16),trenchMat);
+    trench.position.y=-0.6; this.launchPadGroup.add(trench);
+
+    const R_PIVOT=1.1, Y_PIVOT=-0.5, R_CONTACT=0.95, Y_CONTACT=0.4;
+    const dx=R_CONTACT-R_PIVOT, dy=Y_CONTACT-Y_PIVOT;
+    const armLen=Math.hypot(dx,dy), armAngle=Math.atan2(dx,dy);
+    for (let i=0;i<4;i++){
+      const group=new THREE.Group(); group.rotation.y=i*Math.PI/2;
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,armLen,8),armMat);
+      arm.rotation.z=armAngle; arm.position.set(R_PIVOT+dx/2,Y_PIVOT+dy/2,0);
+      group.add(arm);
+      const pad=new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8),armMat);
+      pad.position.set(R_CONTACT,Y_CONTACT,0); group.add(pad);
+      this.launchPadGroup.add(group);
+    }
+
+    const eR_PIVOT=1.6, eY_PIVOT=-0.5, eR_CONTACT=0.9, eY_CONTACT=2.0;
+    const edx=eR_CONTACT-eR_PIVOT, edy=eY_CONTACT-eY_PIVOT;
+    const eLen=Math.hypot(edx,edy), eAngle=Math.atan2(edx,edy);
+    const erector=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.15,eLen,8),erectorMat);
+    erector.rotation.z=eAngle; erector.position.set(eR_PIVOT+edx/2,eY_PIVOT+edy/2,0);
+    this.launchPadGroup.add(erector);
+
+    this.scene.add(this.launchPadGroup);
+  }
+
+
   // Visibilidad de las partes de la Vostok segun la fase: modulo de instrumentos visible
   // hasta el retrofrenado (se desprende antes de la reentrada, como en la mision real);
   // paracaidas visible solo en el tramo final del descenso.
@@ -1795,6 +1912,10 @@ class RocketRenderer3D {
         // capturada una vez en RocketPhysics (ver nota ahi) -- no se recalcula con el tiempo.
         const relBruto = { x: state.launchPadAbs.x-shipAbs.x, y: state.launchPadAbs.y-shipAbs.y, z: state.launchPadAbs.z-shipAbs.z };
         const rel = FRAME_ROTATION_INV(relBruto); // al marco del cohete: Y=altitud, X/Z=deriva lateral
+        // Cada plataforma (buildPadGeneric/Canaveral/Baikonur/SoyuzPad) ya esta disenada con
+        // su propia altura de superficie/contacto ajustada al motor de SU nave -- ya no hace
+        // falta ningun offset generico aqui (el que habia antes era un parche para una unica
+        // plataforma compartida por las 4 misiones).
         this.launchPadGroup.position.set(rel.x, rel.y, rel.z);
       }
     }
