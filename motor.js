@@ -66,15 +66,6 @@ function earthRotationBoost(latDeg, R_earth){
   const lat=latDeg*Math.PI/180;
   return (2*Math.PI*R_earth*Math.cos(lat))/EARTH_SIDEREAL_DAY;
 }
-// Posicion del punto de lanzamiento respecto al CENTRO de la Tierra, en el instante t.
-// El juego nunca modelaba la rotacion axial de la Tierra (ni siquiera para si misma) --
-// los marcadores de Baikonur/Smelovka usan un offset fijo, aceptable porque se ven desde
-// muy lejos (toda la Tierra cabe en pantalla). Para algo pegado al cohete a nivel del
-// suelo, ese mismo error crece a miles de metros en pocos segundos -- aqui SI hace falta.
-function launchPadPositionAt(t){
-  const lonEfectiva = LAUNCH_SITE.lonDeg + (t*360/EARTH_SIDEREAL_DAY);
-  return latLonToXYZ(LAUNCH_SITE.latDeg, lonEfectiva, SOLAR_BODIES.earth.radius);
-}
 
 // ---- Rotacion de marco de referencia: 'arriba' (cabeceo 0) deja de ser siempre el eje Y global.
 // Al lanzar desde un punto que no es el 'polo' de nuestro sistema de coordenadas, la vertical
@@ -293,6 +284,13 @@ class RocketPhysics {
     this.stack=new StageStack();
     const launchPos0 = latLonToXYZ(LAUNCH_SITE.latDeg, LAUNCH_SITE.lonDeg, SOLAR_BODIES.earth.radius);
     this.x=launchPos0.x; this.y=launchPos0.y; this.z=launchPos0.z; // Kourou real, no el 'polo' del sistema de coordenadas
+    // Punto de lanzamiento (geocentrico), capturado una sola vez, para dibujar la plataforma.
+    // NO se recalcula con el tiempo: la nave en tierra con motor apagado NO co-rota con la
+    // Tierra de forma limpia (sigue integrando su velocidad tangencial inicial bajo el
+    // timeScale por defecto -- medido: se desliza >160km en 9s reales de reloj sin despegar).
+    // Anclar la plataforma a este punto fijo, en vez de recalcular una rotacion "ideal", hace
+    // que siga fielmente a la nave sea cual sea su comportamiento real, en vez de divergir.
+    this._launchPos0 = {x:launchPos0.x, y:launchPos0.y, z:launchPos0.z};
     this.pitch=0; this.roll=0; this.yaw=0;
     const boost0=earthRotationBoost(LAUNCH_SITE.latDeg, SOLAR_BODIES.earth.radius), east0=eastDirAt(LAUNCH_SITE.lonDeg);
     this.u=boost0*east0.x; this.v=boost0*east0.y; this.w=boost0*east0.z;
@@ -451,6 +449,19 @@ class RocketPhysics {
   _integrate(dt, controls){
     this.time+=dt;
     this.throttle=Math.max(0,Math.min(1,controls.throttle||0));
+    // En tierra, sin empuje: si solo corrigieramos DESPUES de integrar (anulando la velocidad
+    // tangencial tras el hecho), el primer sub-paso ya se habria desplazado a la velocidad
+    // inicial de rotacion terrestre durante todo ese dt -- con timeScale=100 son ~450m/s x
+    // 1.67s = ~765m de deriva de golpe, incluso "congelada" despues. Evitando la integracion de
+    // fuerzas por completo mientras ya esta asentada, ese margen desaparece. No afecta al
+    // despegue (throttle>=0.05 nunca entra aqui) ni a otros cuerpos (solo 'earth').
+    if (this._lastState.bodyName==='earth' && this._lastState.altitude<=0.01 && this.throttle<0.05 && !this.dockedTo){
+      this.u=0; this.v=0; this.w=0;
+      this.pitchRate*=Math.pow(0.15,dt); this.yawRate*=Math.pow(0.15,dt); this.rollRate*=Math.pow(0.15,dt);
+      this.pitch+=this.pitchRate*dt; this.yaw+=this.yawRate*dt; this.roll+=this.rollRate*dt;
+      this.shakeIntensity*=0.95; this.rpm=800;
+      return this.getState();
+    }
     const pitchCmd=Math.max(-1,Math.min(1,controls.pitch||0));
     const yawCmd=Math.max(-1,Math.min(1,controls.yaw||0));
     const rollCmd=Math.max(-1,Math.min(1,controls.roll||0));
@@ -687,12 +698,14 @@ class RocketPhysics {
       particles:this.particles,trail:this.trail,shakeIntensity:this.shakeIntensity,rpm:this.rpm,
       vCirc,inOrbit,ascending,reentry:!!s.reentryFlag,engineKind:this.engineKind,eclipse,
       vertSpeed,horizSpeed,dockedTo:this.dockedTo,dockInfo,
-      shipAbs, bodies:worldBodies
+      shipAbs, bodies:worldBodies,
+      launchPadAbs: { x: bodyPos.x+this._launchPos0.x, y: bodyPos.y+this._launchPos0.y, z: bodyPos.z+this._launchPos0.z }
     };
   }
   reset(){
     const launchPosR = latLonToXYZ(LAUNCH_SITE.latDeg, LAUNCH_SITE.lonDeg, SOLAR_BODIES.earth.radius);
     this.x=launchPosR.x;this.y=launchPosR.y;this.z=launchPosR.z;this.pitch=0;this.roll=0;this.yaw=0;
+    this._launchPos0 = {x:launchPosR.x, y:launchPosR.y, z:launchPosR.z}; // ver nota en el constructor
     const boost1=earthRotationBoost(LAUNCH_SITE.latDeg, SOLAR_BODIES.earth.radius), east1=eastDirAt(LAUNCH_SITE.lonDeg);
     this.u=boost1*east1.x;this.v=boost1*east1.y;this.w=boost1*east1.z;
     this.pitchRate=0;this.rollRate=0;this.yawRate=0;
@@ -1086,7 +1099,7 @@ class RocketRenderer3D {
     // el cohete (nunca hubo un factor de escala real cohete<->metros en este proyecto, asi
     // que se dimensiona por comparacion, no por las medidas reales de una torre real).
     // Se posiciona en update() con rotacion terrestre + conversion de marco (ver
-    // launchPadPositionAt y FRAME_ROTATION_INV) -- sin eso, se veria "al lado" del cohete
+    // state.launchPadAbs y FRAME_ROTATION_INV) -- sin eso, se veria "al lado" del cohete
     // en vez de "debajo", y se alejaria mucho mas rapido de lo que sube el cohete.
     {
       const padMat=new THREE.MeshStandardMaterial({color:0x6a6a6a,roughness:0.6,metalness:0.5});
@@ -1777,25 +1790,13 @@ class RocketRenderer3D {
       // distancia lateral que su propio tamano, por la deriva natural del ascenso.
       const cerca = state.body==='earth' && state.altitude<1000;
       this.launchPadGroup.visible = cerca;
-      let dbgRel=null;
       if (cerca){
-        const padLocal = launchPadPositionAt(state.time); // respecto al centro de la Tierra, con rotacion terrestre
-        const ep = state.bodies.earth;
-        const padAbs = { x: ep.x+padLocal.x, y: ep.y+padLocal.y, z: ep.z+padLocal.z };
-        const relBruto = { x: padAbs.x-shipAbs.x, y: padAbs.y-shipAbs.y, z: padAbs.z-shipAbs.z };
+        // state.launchPadAbs: posicion REAL de la nave en el instante del ultimo reset/lanzamiento,
+        // capturada una vez en RocketPhysics (ver nota ahi) -- no se recalcula con el tiempo.
+        const relBruto = { x: state.launchPadAbs.x-shipAbs.x, y: state.launchPadAbs.y-shipAbs.y, z: state.launchPadAbs.z-shipAbs.z };
         const rel = FRAME_ROTATION_INV(relBruto); // al marco del cohete: Y=altitud, X/Z=deriva lateral
         this.launchPadGroup.position.set(rel.x, rel.y, rel.z);
-        dbgRel=rel;
       }
-      // DEBUG TEMPORAL
-      const dbgEl=document.getElementById('debugPad');
-      if (dbgEl){
-        dbgEl.style.display='block';
-        dbgEl.textContent='DEBUG plataforma: existe=si visible='+cerca+' body='+state.body+' alt='+state.altitude.toFixed(1)+'m pos='+(dbgRel?('('+dbgRel.x.toFixed(2)+','+dbgRel.y.toFixed(2)+','+dbgRel.z.toFixed(2)+')'):'n/a')+' camDist='+this.camera.position.length().toFixed(1);
-      }
-    } else {
-      const dbgEl=document.getElementById('debugPad');
-      if (dbgEl){ dbgEl.style.display='block'; dbgEl.textContent='DEBUG plataforma: NO EXISTE this.launchPadGroup'; }
     }
     if (this.baikonurMarker && state.bodies.earth){
       const ep=state.bodies.earth;
