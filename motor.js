@@ -66,6 +66,15 @@ function earthRotationBoost(latDeg, R_earth){
   const lat=latDeg*Math.PI/180;
   return (2*Math.PI*R_earth*Math.cos(lat))/EARTH_SIDEREAL_DAY;
 }
+// Posicion del punto de lanzamiento respecto al CENTRO de la Tierra, en el instante t.
+// El juego nunca modelaba la rotacion axial de la Tierra (ni siquiera para si misma) --
+// los marcadores de Baikonur/Smelovka usan un offset fijo, aceptable porque se ven desde
+// muy lejos (toda la Tierra cabe en pantalla). Para algo pegado al cohete a nivel del
+// suelo, ese mismo error crece a miles de metros en pocos segundos -- aqui SI hace falta.
+function launchPadPositionAt(t){
+  const lonEfectiva = LAUNCH_SITE.lonDeg + (t*360/EARTH_SIDEREAL_DAY);
+  return latLonToXYZ(LAUNCH_SITE.latDeg, lonEfectiva, SOLAR_BODIES.earth.radius);
+}
 
 // ---- Rotacion de marco de referencia: 'arriba' (cabeceo 0) deja de ser siempre el eje Y global.
 // Al lanzar desde un punto que no es el 'polo' de nuestro sistema de coordenadas, la vertical
@@ -1072,6 +1081,27 @@ class RocketRenderer3D {
     this.earth=new THREE.Mesh(new THREE.SphereGeometry(SOLAR_BODIES.earth.radius,64,64),earthMat);
     this.scene.add(this.earth); this.bodyMeshes.earth=this.earth;
 
+    // ---- Plataforma de lanzamiento, comun a las 4 misiones ----
+    // Geometria simple (base + torre de servicio), a la misma escala visual arbitraria que
+    // el cohete (nunca hubo un factor de escala real cohete<->metros en este proyecto, asi
+    // que se dimensiona por comparacion, no por las medidas reales de una torre real).
+    // Se posiciona en update() con rotacion terrestre + conversion de marco (ver
+    // launchPadPositionAt y FRAME_ROTATION_INV) -- sin eso, se veria "al lado" del cohete
+    // en vez de "debajo", y se alejaria mucho mas rapido de lo que sube el cohete.
+    {
+      const padMat=new THREE.MeshStandardMaterial({color:0x6a6a6a,roughness:0.6,metalness:0.5});
+      const padDarkMat=new THREE.MeshStandardMaterial({color:0x3a3a3a,roughness:0.7,metalness:0.3});
+      this.launchPadGroup=new THREE.Group();
+      const base=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.8,0.6,8),padDarkMat);
+      base.position.y=-0.3; this.launchPadGroup.add(base);
+      const tower=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,9,8),padMat);
+      tower.position.set(1.8,4.2,0); this.launchPadGroup.add(tower);
+      for (const h of [1.5,4.0,6.5]){
+        const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,1.6,6),padMat);
+        arm.rotation.z=Math.PI/2; arm.position.set(0.9,h,0); this.launchPadGroup.add(arm);
+      }
+      this.scene.add(this.launchPadGroup);
+    }
     // Marcadores de Baikonur (despegue) y Smelovka (aterrizaje), solo en la mision Gagarin.
     // Se colocan en el MISMO marco fijo que usa la fisica de la nave (no giran con la textura
     // de la Tierra) para que coincidan siempre con el punto real de despegue/aterrizaje de la
@@ -1327,6 +1357,7 @@ class RocketRenderer3D {
     while (this.rocketGroup.children.length) this.rocketGroup.remove(this.rocketGroup.children[0]);
     this.flameMeshes=[];
     if (typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='gagarin'){ this.buildVostok(); return; }
+    if (typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss'){ this.buildSoyuz(); return; }
     // Modelo puramente visual (un solo cuerpo rigido, sin separacion de etapas real -- la fisica
     // sigue siendo la de un unico deposito/motor, ya validada). Tres segmentos diferenciados
     // imitan las proporciones del Saturno V real (S-IC ancho en la base, S-II y S-IVB mas
@@ -1489,6 +1520,102 @@ class RocketRenderer3D {
     }
     this.rocketGroup.add(this.parachuteGroup);
   }
+  buildSoyuz(){
+    const hullMat=new THREE.MeshStandardMaterial({color:0xc8c8c0,roughness:0.45,metalness:0.35});
+    const darkerMat=new THREE.MeshStandardMaterial({color:0x8a8a82,roughness:0.5,metalness:0.4});
+    const engineMat=new THREE.MeshStandardMaterial({color:0x2a2a30,roughness:0.2,metalness:0.9});
+    const solarMat=new THREE.MeshStandardMaterial({color:0x1a3a6a,roughness:0.4,metalness:0.6,side:THREE.DoubleSide,emissive:0x0a1a3a,emissiveIntensity:0.15});
+    const solarFrameMat=new THREE.MeshStandardMaterial({color:0x555555,roughness:0.4,metalness:0.7});
+    const windowMat=new THREE.MeshStandardMaterial({color:0x1a2a33,roughness:0.05,metalness:0.9,emissive:0x2288ff,emissiveIntensity:0.25,transparent:true,opacity:0.85});
+
+    // updateStageVisibility() accede sin comprobar a this.sICGroup/sIIGroup/sIVBGroup/
+    // lmLegsGroup (.visible, .position, .rotation) para CUALQUIER mision -- Saturno V no es
+    // la unica nave que pasa por esa funcion. Sin estos grupos (vacios, no se ven), la
+    // mision ISS con Soyuz rompe en el primer fotograma del ascenso (TypeError). Vacios y
+    // sin geometria: no cuesta nada, updateFallingStages() solo mueve/oculta el grupo
+    // entero, nunca asume que tenga contenido.
+    this.sICGroup = new THREE.Group(); this.rocketGroup.add(this.sICGroup);
+    this.sIIGroup = new THREE.Group(); this.rocketGroup.add(this.sIIGroup);
+    this.sIVBGroup = new THREE.Group(); this.rocketGroup.add(this.sIVBGroup);
+    this.lmLegsGroup = new THREE.Group(); this.lmLegsGroup.visible=false; this.rocketGroup.add(this.lmLegsGroup);
+
+    // ---- Modulo de servicio (cilindro, base de la nave) ----
+    // Es lo mas "abajo" y sostiene los paneles solares. En la Soyuz real tiene los
+    // tanques de propergol y el motor principal SKD.
+    const service=new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,2.0,24),darkerMat);
+    service.position.y=1.0; service.castShadow=true; this.rocketGroup.add(service);
+
+    // ---- Modulo de descenso (tronco de cono achatado) ----
+    // Encima del servicio. Aqui van los cosmonautas durante el lanzamiento y la reentrada.
+    const descent=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.85,1.2,24),hullMat);
+    descent.position.y=2.7; descent.castShadow=true; this.rocketGroup.add(descent);
+
+    // ---- Modulo orbital (esfera, proa) ----
+    // Donde vive la tripulacion en orbita y donde esta el puerto de acoplamiento (proa).
+    const orbital=new THREE.Mesh(new THREE.SphereGeometry(0.75,24,24),hullMat);
+    orbital.position.y=4.2; orbital.castShadow=true; this.rocketGroup.add(orbital);
+
+    // Puerto de acoplamiento (proa del modulo orbital, sonda + cono visible como
+    // un cilindro pequeno y claro -- recordatorio visual de que es una Soyuz)
+    const portMat=new THREE.MeshStandardMaterial({color:0xaaaaaa,roughness:0.3,metalness:0.7});
+    const port=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.4,0.25,16),portMat);
+    port.position.y=4.95; this.rocketGroup.add(port);
+    const probe=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.35,8),portMat);
+    probe.position.y=5.2; this.rocketGroup.add(probe);
+
+    // ---- Ventanas (dos en el modulo de descenso, una en el orbital) ----
+    // Puntos de referencia visual: sin ellas, la nave se ve como un tubo liso.
+    const win1=new THREE.Mesh(new THREE.CircleGeometry(0.13,16),windowMat);
+    win1.position.set(0.82,2.75,0); win1.lookAt(1.6,2.75,0); this.rocketGroup.add(win1);
+    const win2=new THREE.Mesh(new THREE.CircleGeometry(0.13,16),windowMat);
+    win2.position.set(-0.82,2.75,0); win2.lookAt(-1.6,2.75,0); this.rocketGroup.add(win2);
+    const win3=new THREE.Mesh(new THREE.CircleGeometry(0.10,16),windowMat);
+    win3.position.set(0,4.55,0.68); win3.lookAt(0,4.55,1.6); this.rocketGroup.add(win3);
+
+    // ---- Paneles solares (dos, desplegados del modulo de servicio) ----
+    // Se despliegan a ambos lados, en el plano XZ (perpendiculares al eje de la nave).
+    // Este es el rasgo visual mas distintivo de la Soyuz: sin paneles, no se reconoce.
+    for (let side=-1; side<=1; side+=2){
+      // Brazo de union
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.5,8),solarFrameMat);
+      arm.rotation.z=Math.PI/2;
+      arm.position.set(side*1.15,1.0,0); this.rocketGroup.add(arm);
+
+      // Panel (rectangulo achatado, doble cara visible)
+      const panel=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.05,1.1),solarMat);
+      panel.position.set(side*2.35,1.0,0);
+      panel.castShadow=true; this.rocketGroup.add(panel);
+
+      // Rejilla de celulas (lineas visuales sobre el panel)
+      const gridMat=new THREE.MeshBasicMaterial({color:0x0a1a3a,transparent:true,opacity:0.5});
+      for (let i=-1;i<=1;i++){
+        const line=new THREE.Mesh(new THREE.BoxGeometry(0.03,0.06,1.1),gridMat);
+        line.position.set(side*2.35+i*0.6,1.0,0); this.rocketGroup.add(line);
+      }
+    }
+
+    // ---- Motor SKD (unico, central, en la base del modulo de servicio) ----
+    // Tobera mas pequena que las del Saturno V -- corresponde a la escala de la nave.
+    const nozzleMat=new THREE.MeshStandardMaterial({color:0x222233,roughness:0.15,metalness:0.98,emissive:0x331100,emissiveIntensity:0.1});
+    const nozzle=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.5,0.4,20),nozzleMat);
+    nozzle.position.y=-0.15; this.rocketGroup.add(nozzle);
+
+    // ---- 4 propulsores RCS de maniobra (uno por cuadrante, muy pequenos) ----
+    // No son funcionales visualmente, solo dan escala y reconocimiento de "nave espacial".
+    for (let i=0;i<4;i++){
+      const angle=(i/4)*Math.PI*2+Math.PI/4;
+      const rcs=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.10,0.15,8),engineMat);
+      rcs.position.set(0.7*Math.cos(angle),0.3,0.7*Math.sin(angle));
+      rcs.rotation.z=Math.cos(angle)*0.4; rcs.rotation.x=Math.sin(angle)*0.4;
+      this.rocketGroup.add(rcs);
+    }
+
+    // ---- Glow del motor (mismo rol que en Saturno V y Vostok) ----
+    // El renderer usa this.engineGlow para modular su opacidad con el throttle.
+    const glowMat=new THREE.MeshBasicMaterial({color:0xff5500,transparent:true,opacity:0.4,blending:THREE.AdditiveBlending});
+    const glow=new THREE.Mesh(new THREE.SphereGeometry(0.45,12,12),glowMat);
+    glow.position.y=-0.3; this.rocketGroup.add(glow); this.engineGlow=glow;
+  }
 
   // Visibilidad de las partes de la Vostok segun la fase: modulo de instrumentos visible
   // hasta el retrofrenado (se desprende antes de la reentrada, como en la mision real);
@@ -1645,6 +1772,20 @@ class RocketRenderer3D {
     }
     if (this.clouds) this.clouds.position.copy(this.earth.position);
     if (this.atmosphere) this.atmosphere.position.copy(this.earth.position);
+    if (this.launchPadGroup){
+      // visible solo cerca del suelo: a 1000m de altitud ya estaria a bastante mas
+      // distancia lateral que su propio tamano, por la deriva natural del ascenso.
+      const cerca = state.body==='earth' && state.altitude<1000;
+      this.launchPadGroup.visible = cerca;
+      if (cerca){
+        const padLocal = launchPadPositionAt(state.time); // respecto al centro de la Tierra, con rotacion terrestre
+        const ep = state.bodies.earth;
+        const padAbs = { x: ep.x+padLocal.x, y: ep.y+padLocal.y, z: ep.z+padLocal.z };
+        const relBruto = { x: padAbs.x-shipAbs.x, y: padAbs.y-shipAbs.y, z: padAbs.z-shipAbs.z };
+        const rel = FRAME_ROTATION_INV(relBruto); // al marco del cohete: Y=altitud, X/Z=deriva lateral
+        this.launchPadGroup.position.set(rel.x, rel.y, rel.z);
+      }
+    }
     if (this.baikonurMarker && state.bodies.earth){
       const ep=state.bodies.earth;
       this.baikonurMarker.position.set(ep.x+this.baikonurOffset.x-shipAbs.x, ep.y+this.baikonurOffset.y-shipAbs.y, ep.z+this.baikonurOffset.z-shipAbs.z);
@@ -2949,7 +3090,16 @@ class RocketSimApp {
         const steer=p.autopilotSteer(dir);
         this.controls.pitch=steer.pitch; this.controls.yaw=steer.yaw; this.controls.roll=steer.roll;
       }
-      state=this.physics.step(rawDt,this.controls);
+      // Con el motor encendido en modo manual, el timeScale elegido (x100 por defecto,
+      // hasta x3.000.000) puede comprimir una quema entera en menos de un par de segundos
+      // de reloj real, sin margen para bajar el gas a tiempo (medido: una quema de 185s
+      // simulados con timeScale=100 dura 1,85s reales). Mientras el motor esta encendido,
+      // se limita a x5 (37s reales para esos mismos 185s) -- el timeScale elegido por el
+      // jugador se conserva sin tocar y vuelve a aplicarse en cuanto se suelta el motor.
+      const effectiveControls = (this.controls.throttle>0 && this.controls.timeScale>5)
+        ? {...this.controls, timeScale:5}
+        : this.controls;
+      state=this.physics.step(rawDt,effectiveControls);
     }
 
     if (this.sound.enabled) this.sound.update(state.throttle,state.rpm,state.gForce,state.velocity,state.altitude);
