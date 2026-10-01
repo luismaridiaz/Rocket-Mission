@@ -2904,7 +2904,11 @@ class RocketSimApp {
     this.mission = window.MISSION_CONFIG || null;
     // En iss.html, la ISS visible es la de iss.js. El HUD de acoplamiento debe
     // medir contra ella, no contra la ISS simplificada de DOCKING_TARGETS.
-    if (this.mission && this.mission.type === 'iss'
+    // El Shuttle tambien acopla con la ISS real (misma rendezvous que la Soyuz) -- sin
+    // incluir 'shuttle' aqui, el resolver nunca se instala y el HUD mide contra la
+    // ISS-fantasma de DOCKING_TARGETS (el bug de 7.648km ya corregido para iss.html,
+    // que se replicaria sin este cambio).
+    if (this.mission && (this.mission.type === 'iss' || this.mission.type === 'shuttle')
         && typeof orbitalObjectPosition === 'function'
         && typeof orbitalObjectVelocity === 'function'
         && typeof positionOf === 'function'
@@ -3345,7 +3349,11 @@ class RocketSimApp {
     // quede claro que es un modelo simplificado (no simula sensores).
     const btnCWEl = document.getElementById('btnCW');
     const dhSubEl = document.getElementById('dhSubtitle');
-    if (btnCWEl && this.dockingAuto && this.mission && this.mission.type === 'iss') {
+    // El Shuttle tambien acopla con la ISS real -- misma condicion que el resolver de
+    // docking (setDockingTargetResolver): dos sitios con la misma comprobacion, uno ya
+    // arreglado y este sin arreglar habria dejado al Shuttle sin boton de acople jamas.
+    const usesRealIssRendezvous = this.mission && (this.mission.type === 'iss' || this.mission.type === 'shuttle');
+    if (btnCWEl && this.dockingAuto && usesRealIssRendezvous) {
       const cercaISS = info && info.dist < 200;
       const cwOn = this.dockingAuto.isActive();
       if (cwOn) {
@@ -3361,7 +3369,10 @@ class RocketSimApp {
       }
       if (dhSubEl) {
         dhSubEl.style.display = cwOn ? 'block' : 'none';
-        dhSubEl.textContent = cwOn ? 'acoplamiento automático simplificado · sin sensores Kurs' : '';
+        // Generico (sin 'Kurs'): ese radar es especificamente sovietico/ruso, nunca lo
+        // llevo el Shuttle -- mencionarlo en una mision Shuttle seria anacronico. El
+        // mismo texto sirve para ambas naves sin tener que bifurcar por type.
+        dhSubEl.textContent = cwOn ? 'acoplamiento automático simplificado · sin sensores de radar reales' : '';
       }
     } else {
       if (btnCWEl) btnCWEl.style.display = 'none';
