@@ -271,11 +271,48 @@ class StageStack {
     }
   }
   get maxFuelMass(){ return this._totalMaxFuel; }
-  get maxThrust(){ return this.current().thrust; }
+  // Para una etapa hibrida (fixedThrust+throttlableThrust, sin thrust/isp planos), el
+  // "empuje maximo" para mostrar (HUD, TWR) es la suma de ambos componentes a plena marcha.
+  get maxThrust(){
+    const c=this.current();
+    if (c.fixedThrust!==undefined || c.throttlableThrust!==undefined) return (c.fixedThrust||0)+(c.throttlableThrust||0);
+    return c.thrust;
+  }
   set maxThrust(v){ this.current().thrust=v; }
   get isp(){ return this.current().isp; }
   set isp(v){ this.current().isp=v; }
   reset(){ this.currentIndex=0; for (const s of this.stages) s.fuelMass=s.maxFuelMass; this.justSeparated=null; }
+  // Empuje efectivo y caudal masico de la etapa actual, dado el throttle del jugador y el
+  // tiempo de mision. Dos tipos de etapa:
+  //  - Simple: usa thrust/isp (comportamiento clasico). notThrottlable fuerza throttle=1
+  //    mientras haya combustible (p.ej. un SRB modelado como etapa unica, sin componente liquido).
+  //  - Hibrida: fixedThrust/fixedIsp (componente no regulable, p.ej. SRB) +
+  //    throttlableThrust/throttlableIsp (componente regulable, p.ej. SSME), con ventana
+  //    opcional de throttle-down (throttleDownStart/End/Factor) aplicada SOLO al componente
+  //    regulable -- el fijo nunca se toca, es la generalizacion de notThrottlable.
+  effectiveThrustAt(throttle, missionTime){
+    const c=this.current();
+    if (!c) return {thrust:0, massFlow:0};
+    if (c.fixedThrust!==undefined || c.throttlableThrust!==undefined){
+      const fixedT=c.fixedThrust||0, fixedIsp=c.fixedIsp||1;
+      const throttT=c.throttlableThrust||0, throttIsp=c.throttlableIsp||1;
+      let effThrottle=throttle;
+      if (c.throttleDownStart!==undefined && c.throttleDownEnd!==undefined && missionTime>=c.throttleDownStart && missionTime<=c.throttleDownEnd){
+        effThrottle*=(c.throttleDownFactor!==undefined ? c.throttleDownFactor : 1);
+      }
+      const throttTActual=throttT*effThrottle;
+      const fixedFlow=fixedIsp>0 ? fixedT/(fixedIsp*9.81) : 0;
+      const throttFlow=throttIsp>0 ? throttTActual/(throttIsp*9.81) : 0;
+      return {thrust:fixedT+throttTActual, massFlow:fixedFlow+throttFlow};
+    }
+    // notThrottlable: siempre al 100% mientras haya combustible, SIN IMPORTAR el throttle
+    // del jugador (ni siquiera 0) -- un SRB no se puede apagar una vez encendido. La decision
+    // de si esta etapa deberia estar ardiendo en absoluto (fuelMass>0) la toma el llamador.
+    const effThrottle = c.notThrottlable ? 1 : throttle;
+    const t=(c.thrust||0)*effThrottle;
+    const mdot=(c.isp>0) ? t/(c.isp*9.81) : 0;
+    return {thrust:t, massFlow:mdot};
+  }
 }
 
 /* ---------- FISICA: motor multi-cuerpo (conicas remendadas) ---------- */
@@ -455,7 +492,11 @@ class RocketPhysics {
     // 1.67s = ~765m de deriva de golpe, incluso "congelada" despues. Evitando la integracion de
     // fuerzas por completo mientras ya esta asentada, ese margen desaparece. No afecta al
     // despegue (throttle>=0.05 nunca entra aqui) ni a otros cuerpos (solo 'earth').
-    if (this._lastState.bodyName==='earth' && this._lastState.altitude<=0.01 && this.throttle<0.05 && !this.dockedTo){
+    // Si la etapa actual va a arder de todas formas con throttle=0 (notThrottlable, o el
+    // componente fijo de una etapa hibrida SRB+SSME), "congelarse en tierra" aqui la dejaria
+    // sin empuje aunque este fisicamente encendida.
+    const stageBurningRegardless = this.fuelMass>0 && this.stack.effectiveThrustAt(0, this.time).thrust>0;
+    if (this._lastState.bodyName==='earth' && this._lastState.altitude<=0.01 && this.throttle<0.05 && !this.dockedTo && !stageBurningRegardless){
       this.u=0; this.v=0; this.w=0;
       this.pitchRate*=Math.pow(0.15,dt); this.yawRate*=Math.pow(0.15,dt); this.rollRate*=Math.pow(0.15,dt);
       this.pitch+=this.pitchRate*dt; this.yaw+=this.yawRate*dt; this.roll+=this.rollRate*dt;
@@ -537,10 +578,18 @@ class RocketPhysics {
     if (velocity>0.1){ dragVec={x:-drag*(this.u/velocity),y:-drag*(this.v/velocity),z:-drag*(this.w/velocity)}; }
 
     let thrust=0;
-    if (this.fuelMass>0 && this.throttle>0){
-      thrust=this.maxThrust*this.throttle;
-      const fuelBurn=thrust/(this.Isp*9.81)*dt;
-      this.fuelMass=Math.max(0,this.fuelMass-fuelBurn);
+    // effectiveThrustAt calcula el empuje y el caudal real de la etapa actual (simple o
+    // hibrida SRB+SSME), respetando notThrottlable/fixedThrust y cualquier ventana de
+    // throttle-down declarada. Se llama siempre que haya combustible: para una etapa que
+    // arde sin importar el throttle (notThrottlable, o el componente fijo de una hibrida),
+    // el empuje resultante es >0 incluso con throttle=0 -- por eso no se puede condicionar
+    // la llamada a "throttle>0" como antes.
+    if (this.fuelMass>0){
+      const eff = this.stack.effectiveThrustAt(this.throttle, this.time);
+      thrust = eff.thrust;
+      if (thrust>0){
+        this.fuelMass=Math.max(0,this.fuelMass-eff.massFlow*dt);
+      }
     }
     const effPitch=this.pitch+pitchCmd*0.05;
     const heading=FRAME_ROTATION(RocketPhysics.rotateVec(0,1,0,effPitch,this.yaw,this.roll));
@@ -699,7 +748,8 @@ class RocketPhysics {
       vCirc,inOrbit,ascending,reentry:!!s.reentryFlag,engineKind:this.engineKind,eclipse,
       vertSpeed,horizSpeed,dockedTo:this.dockedTo,dockInfo,
       shipAbs, bodies:worldBodies,
-      launchPadAbs: { x: bodyPos.x+this._launchPos0.x, y: bodyPos.y+this._launchPos0.y, z: bodyPos.z+this._launchPos0.z }
+      launchPadAbs: { x: bodyPos.x+this._launchPos0.x, y: bodyPos.y+this._launchPos0.y, z: bodyPos.z+this._launchPos0.z },
+      stageIndex: this.stack.currentIndex
     };
   }
   reset(){
@@ -1356,6 +1406,7 @@ class RocketRenderer3D {
     this.flameMeshes=[];
     if (typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='gagarin'){ this.buildVostok(); return; }
     if (typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss'){ this.buildSoyuz(); return; }
+    if (typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='shuttle'){ this.buildShuttleStack(); return; }
     // Modelo puramente visual (un solo cuerpo rigido, sin separacion de etapas real -- la fisica
     // sigue siendo la de un unico deposito/motor, ya validada). Tres segmentos diferenciados
     // imitan las proporciones del Saturno V real (S-IC ancho en la base, S-II y S-IVB mas
@@ -1615,6 +1666,99 @@ class RocketRenderer3D {
     glow.position.y=-0.3; this.rocketGroup.add(glow); this.engineGlow=glow;
   }
 
+  buildShuttleStack(){
+    // Stack completo del Shuttle: 2 SRB + ET (naranja) + Orbiter.
+    // Organizacion por grupos para que updateStageVisibility los oculte por separado
+    // (SRB a los ~120s, ET a los ~510s):
+    //   sICGroup -> par de SRB
+    //   sIIGroup -> ET
+    //   sIVBGroup -> Orbiter (siempre visible)
+    //   lmLegsGroup -> vacio (interfaz)
+
+    const whiteMat  = new THREE.MeshStandardMaterial({color:0xf0f0e8, roughness:0.4, metalness:0.15});
+    const orangeMat = new THREE.MeshStandardMaterial({color:0xd97f30, roughness:0.55, metalness:0.1});
+    const blackMat  = new THREE.MeshStandardMaterial({color:0x1a1a1a, roughness:0.5, metalness:0.2});
+    const engineMat = new THREE.MeshStandardMaterial({color:0x2a2a30, roughness:0.2, metalness:0.9});
+    const windowMat = new THREE.MeshStandardMaterial({color:0x1a2a33, roughness:0.05, metalness:0.9, emissive:0x2288ff, emissiveIntensity:0.25, transparent:true, opacity:0.85});
+
+    // ---- sICGroup: par de SRB (cohetes solidos laterales) ----
+    this.sICGroup = new THREE.Group();
+    for (let side=-1; side<=1; side+=2){
+      const x = side*1.7;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.30, 5.0, 20), whiteMat);
+      body.position.set(x, 2.0, 0); body.castShadow=true;
+      this.sICGroup.add(body);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.30, 0.35, 20), whiteMat);
+      cap.position.set(x, 4.67, 0);
+      this.sICGroup.add(cap);
+      const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.30, 16), engineMat);
+      nozzle.position.set(x, -0.65, 0);
+      this.sICGroup.add(nozzle);
+    }
+    this.rocketGroup.add(this.sICGroup);
+
+    // ---- sIIGroup: ET (External Tank, naranja) ----
+    this.sIIGroup = new THREE.Group();
+    const et = new THREE.Mesh(new THREE.CylinderGeometry(0.50, 0.50, 5.8, 24), orangeMat);
+    et.position.y = 2.6; et.castShadow=true;
+    this.sIIGroup.add(et);
+    const etTop = new THREE.Mesh(new THREE.ConeGeometry(0.50, 0.9, 24), orangeMat);
+    etTop.position.y = 5.95;
+    this.sIIGroup.add(etTop);
+    this.rocketGroup.add(this.sIIGroup);
+
+    // ---- sIVBGroup: Orbiter (transbordador) ----
+    // Fuselaje en +X (lado opuesto al vientre, que mira al ET). Alas en +-Z. Timon
+    // vertical en +X (dorso en vuelo).
+    this.sIVBGroup = new THREE.Group();
+    const fusX = 0.85;
+    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 3.4, 20), whiteMat);
+    fuselage.position.set(fusX, 1.3, 0); fuselage.castShadow=true;
+    this.sIVBGroup.add(fuselage);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.9, 20), whiteMat);
+    nose.position.set(fusX, 3.45, 0); nose.castShadow=true;
+    this.sIVBGroup.add(nose);
+    // Vientre negro (escudo termico, mira al ET)
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.06, 3.4, 0.5), blackMat);
+    belly.position.set(fusX - 0.24, 1.3, 0);
+    this.sIVBGroup.add(belly);
+    // Alas (extensiones perpendiculares al plano ET-Orbiter)
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 2.6), whiteMat);
+    wing.position.set(fusX, 0.2, 0); wing.castShadow=true;
+    this.sIVBGroup.add(wing);
+    // Timon vertical (desde el dorso hacia +X)
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.06), whiteMat);
+    fin.position.set(fusX + 0.55, 3.0, 0);
+    this.sIVBGroup.add(fin);
+    // 3 SSME (motores principales)
+    for (let i=0; i<3; i++){
+      const a = (i/3)*Math.PI*2;
+      const ssme = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.4, 12), engineMat);
+      ssme.position.set(fusX + Math.cos(a)*0.15, -0.55, Math.sin(a)*0.15);
+      this.sIVBGroup.add(ssme);
+    }
+    // Ventanas (dos circulitos cerca del morro)
+    for (let i=0; i<2; i++){
+      const w = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), windowMat);
+      w.position.set(fusX + 0.28, 3.3 + i*0.15, -0.08 + i*0.16);
+      w.lookAt(w.position.x + 1, w.position.y, w.position.z);
+      this.sIVBGroup.add(w);
+    }
+    this.rocketGroup.add(this.sIVBGroup);
+
+    // ---- lmLegsGroup vacio (interfaz con updateStageVisibility) ----
+    this.lmLegsGroup = new THREE.Group();
+    this.rocketGroup.add(this.lmLegsGroup);
+
+    // ---- Glow del motor (el renderer lo modula con throttle) ----
+    const glowMat = new THREE.MeshBasicMaterial({color:0xff5500, transparent:true, opacity:0.4, blending:THREE.AdditiveBlending});
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 12), glowMat);
+    glow.position.set(0.4, -0.3, 0);
+    this.rocketGroup.add(glow);
+    this.engineGlow = glow;
+  }
+
+
   buildLaunchPad(){
     const cfg = (typeof window!=='undefined') ? window.MISSION_CONFIG : null;
     const type = cfg ? cfg.type : null;
@@ -1765,7 +1909,7 @@ class RocketRenderer3D {
   // nuestra simulacion no tarda lo mismo que la mision real (el TLI dispara mucho antes que
   // las 2h44m reales), asi que usar los tiempos historicos (162s/522s/702s) haria que una
   // etapa "cayera" en mitad del crucero translunar. Puramente decorativo -- no toca la fisica.
-  updateStageVisibility(missionPhase){
+  updateStageVisibility(missionPhase, stageIndex){
     if (!missionPhase){ // sandbox sin piloto automatico: cohete completo, como siempre
       this.sICGroup.visible=true; this.sIIGroup.visible=true; this.sIVBGroup.visible=true; this.lmLegsGroup.visible=false;
       this.sICGroup.position.set(0,0,0); this.sICGroup.rotation.set(0,0,0);
@@ -1775,6 +1919,35 @@ class RocketRenderer3D {
       return;
     }
     if (!this._fallingStages) this._fallingStages=[];
+    const alreadyFalling=(g)=>this._fallingStages.some(fs=>fs.group===g);
+
+    const isShuttle = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='shuttle';
+    if (isShuttle){
+      // Shuttle: SRB (sICGroup), ET (sIIGroup), Orbiter (sIVBGroup) siguen la separacion
+      // REAL por stageIndex, no la fase -- se separan durante 'ascent' (a los ~120s y
+      // ~510s respectivamente), no al llegar a orbita. Sin esta rama, se quedarian
+      // visibles todo el ascenso y caerian juntos en coast_leo, perdiendo el momento
+      // visual de la separacion de los SRB. Misma clase de bifurcacion aislada por
+      // type que en MissionAutopilot.ascent, con regresion verificada.
+      const inAscent = missionPhase === 'ascent';
+      const idx = (typeof stageIndex === 'number') ? stageIndex : 0;
+      const wantSIC  = inAscent && idx === 0;   // par de SRB: solo durante fase 1
+      const wantSII  = inAscent && idx <= 1;    // ET: fases 1 y 2
+      const wantSIVB = true;                    // Orbiter: siempre visible
+      if (this.sICGroup.visible && !wantSIC && !alreadyFalling(this.sICGroup)) this._fallingStages.push({group:this.sICGroup, age:0});
+      if (this.sIIGroup.visible && !wantSII && !alreadyFalling(this.sIIGroup)) this._fallingStages.push({group:this.sIIGroup, age:0});
+      // sIVBGroup no cae nunca (el Orbiter es la nave que aterriza/regresa); la linea
+      // queda por simetria y por si algun dia se quiere desprender.
+      if (this.sIVBGroup.visible && !wantSIVB && !alreadyFalling(this.sIVBGroup)) this._fallingStages.push({group:this.sIVBGroup, age:0});
+      if (wantSIC)  this.sICGroup.visible=true;
+      if (wantSII)  this.sIIGroup.visible=true;
+      if (wantSIVB) this.sIVBGroup.visible=true;
+      this.lmLegsGroup.visible = false;
+      this.lmLegsGroup.position.y = 0;
+      return;
+    }
+
+    // Resto (Apolo, ISS con Soyuz, Gagarin, sandbox): logica existente, byte a byte.
     const isAscent = missionPhase==='ascent' || missionPhase==='iss_ascent';
     // 'done' es un string de fase COMPARTIDO entre Apolo y la ISS (ambos terminan su
     // piloto automatico asi). Sin esta guarda, al llegar la ISS a 'done' el codigo
@@ -1783,10 +1956,6 @@ class RocketRenderer3D {
     const isIssMissionPhase = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss';
     const arrivedAtMoon = !isIssMissionPhase && ['loi_burn','descent','done'].includes(missionPhase);
     const wantSIC = isAscent, wantSII = isAscent, wantSIVB = !arrivedAtMoon;
-    const alreadyFalling=(g)=>this._fallingStages.some(fs=>fs.group===g);
-    // Al pasar de visible a oculta, no se apaga de golpe: se marca para que
-    // updateFallingStages() la haga alejarse y girar durante unos segundos primero.
-    // alreadyFalling() evita añadirla de nuevo en cada fotograma mientras cae.
     if (this.sICGroup.visible && !wantSIC && !alreadyFalling(this.sICGroup)) this._fallingStages.push({group:this.sICGroup, age:0});
     if (this.sIIGroup.visible && !wantSII && !alreadyFalling(this.sIIGroup)) this._fallingStages.push({group:this.sIIGroup, age:0});
     if (this.sIVBGroup.visible && !wantSIVB && !alreadyFalling(this.sIVBGroup)) this._fallingStages.push({group:this.sIVBGroup, age:0});
@@ -1880,7 +2049,7 @@ class RocketRenderer3D {
   update(state, frameDt, missionPhase){
     const isGagarin = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='gagarin';
     if (isGagarin) this.updateVostokVisibility(missionPhase);
-    else { this.updateStageVisibility(missionPhase); this.updateFallingStages(Math.min(0.1,frameDt||0.016)); }
+    else { this.updateStageVisibility(missionPhase, state.stageIndex); this.updateFallingStages(Math.min(0.1,frameDt||0.016)); }
     const shipAbs = new THREE.Vector3(state.shipAbs.x, state.shipAbs.y, state.shipAbs.z);
     // origen flotante: cada cuerpo se coloca en su posicion real MENOS la posicion real de la nave,
     // asi la nave siempre esta cerca de (0,0,0) sin importar si estamos junto a la Tierra o cerca de Pluton.
@@ -2488,13 +2657,66 @@ class MissionAutopilot {
     if (this.phase==='ascent'){
       this.explain('ascent');
       const tAsc = p.time - this.phaseStart;
+      // Deteccion Shuttle: su perfil de ascenso necesita una rama propia porque el perfil
+      // estandar (por reloj) satura a 83 grados demasiado pronto para su relacion
+      // empuje/peso (TWR 1.58 inicial, pero cae al apagarse los SRB). Y la fase OMS
+      // requiere orientacion prograda en vez de giro angular.
+      const isShuttle = this.app.mission && this.app.mission.type === 'shuttle'; // mismo patron que isGagarin/isIss en start()/explain()
       let dir;
-      if (tAsc<8) dir = FRAME_ROTATION({x:0,y:1,z:0});
-      else { const angle=Math.min(1.45,0.02*(tAsc-8)); dir = FRAME_ROTATION(RocketPhysics.rotateVec(0,1,0,angle,LAUNCH_YAW_EAST,0)); }
+      if (isShuttle && p.stack.currentIndex === 2){
+        // ---- Shuttle, fase OMS (etapa 3): orientacion PROGRADA ----
+        // La quema de circularizacion real (OMS-2) apunta al vector velocidad, no sigue
+        // un perfil angular de ascenso. Sin esto, el perigeo queda bajo tierra por mucho
+        // que se alargue el ascenso (verificado en arnes).
+        const speedNow = Math.sqrt(p.u*p.u + p.v*p.v + p.w*p.w);
+        if (speedNow > 0.5){
+          dir = { x: p.u/speedNow, y: p.v/speedNow, z: p.w/speedNow };
+        } else {
+          dir = FRAME_ROTATION({x:0,y:1,z:0});
+        }
+      } else if (isShuttle){
+        // ---- Shuttle, etapas 1 y 2 (SRB+SSME / SSME solo): perfil por fracV ----
+        // El perfil de reloj del resto de misiones (0.02*(t-8)) esta calibrado para naves
+        // que ganan velocidad vertical suficiente en los primeros 80s. Con el Shuttle la
+        // velocidad se gana mucho mas despacio al inicio, asi que el giro se basa en la
+        // fraccion de velocidad orbital ya alcanzada, no en el tiempo transcurrido.
+        // Exponente 0.7 y coeficiente 2.78: valores encontrados por busqueda parametrica
+        // para ESTE physicsStack concreto (perigeo final +103km, verificado 6h de coast).
+        // No es un valor universal -- si el physicsStack del Shuttle cambia (masas, Isp),
+        // el coeficiente 2.78 puede necesitar recalibrarse.
+        const rActual = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+        const speedNow = Math.sqrt(p.u*p.u + p.v*p.v + p.w*p.w);
+        const vOrbital = Math.sqrt(G * SOLAR_BODIES.earth.mass / rActual);
+        const fracV = Math.min(1, speedNow / vOrbital);
+        const angle = Math.min(1.45, 2.78 * Math.pow(fracV, 0.7));
+        dir = FRAME_ROTATION(RocketPhysics.rotateVec(0,1,0,angle,LAUNCH_YAW_EAST,0));
+      } else {
+        // ---- Resto (Apolo, ISS, Gagarin, sandbox): perfil por reloj (el actual, intacto) ----
+        if (tAsc<8) dir = FRAME_ROTATION({x:0,y:1,z:0});
+        else { const angle=Math.min(1.45,0.02*(tAsc-8)); dir = FRAME_ROTATION(RocketPhysics.rotateVec(0,1,0,angle,LAUNCH_YAW_EAST,0)); }
+      }
       const steer=p.autopilotSteer(dir);
       controls.pitch=steer.pitch; controls.yaw=steer.yaw; controls.roll=steer.roll; controls.throttle=1; controls.timeScale=1;
-      if (preState.inOrbit){ this.phase='coast_leo'; this.phaseStart=p.time; this.explain('coast_leo'); }
-      if (preState.fuelPercent<=0 && !preState.inOrbit){ this.stop('⚠️ Sin combustible antes de alcanzar órbita.'); return null; }
+      // El Shuttle puede cumplir inOrbit de forma MARGINAL durante la etapa 2 (SSME solo),
+      // mucho antes de que el OMS tenga oportunidad de circularizar -- verificado en pruebas:
+      // perigeo de -2700km en ese momento, reentraria. Para el resto de misiones (una o dos
+      // etapas, sin una fase de circularizacion separada) inOrbit marginal SI es el criterio
+      // correcto de salida, como siempre. El Shuttle solo debe salir de ascent cuando la
+      // etapa OMS (currentIndex===2) confirme la orbita, o se quede sin combustible en ella.
+      if (isShuttle){
+        // inOrbit puede cumplirse de forma marginal EN CUALQUIER PUNTO de la quema OMS, no
+        // solo al final -- verificado en pruebas: salir ahi deja un perigeo de -14km (muy
+        // cerca, pero reentra). El OMS necesita agotar TODO su combustible para que la
+        // circularizacion progrado real surta efecto (asi se calibro: perigeo +103km,
+        // estable 6h, cuando el OMS quema hasta el final sin cortar antes).
+        if (p.stack.currentIndex===2 && preState.fuelPercent<=0){
+          if (preState.inOrbit){ this.phase='coast_leo'; this.phaseStart=p.time; this.explain('coast_leo'); }
+          else { this.stop('⚠️ Sin combustible antes de alcanzar órbita.'); return null; }
+        }
+      } else {
+        if (preState.inOrbit){ this.phase='coast_leo'; this.phaseStart=p.time; this.explain('coast_leo'); }
+        if (preState.fuelPercent<=0 && !preState.inOrbit){ this.stop('⚠️ Sin combustible antes de alcanzar órbita.'); return null; }
+      }
       return controls;
     }
 
@@ -3358,9 +3580,14 @@ class RocketSimApp {
       ctx.fillStyle='#e8e8f0';
       ctx.fillText(text,x,y);
     }
+    // El factor de achatamiento es cos(inclinacion axial real) -- vistos desde arriba (el
+    // mapa es siempre una vista de planta), Saturno (26.73 grados de inclinacion) se ve casi
+    // circular, mientras que Urano (97.77 grados, practicamente tumbado de lado) se ve casi
+    // de canto, como una linea. Antes ambos se dibujaban como circulos identicos con
+    // ctx.arc(), perdiendo esta diferencia real tan marcada entre los dos.
     const RING_INFO={
-      saturn:{inner:1.3, outer:2.3, rgb:'216,201,160'},
-      uranus:{inner:1.6, outer:2.0, rgb:'85,101,112'}
+      saturn:{inner:1.3, outer:2.3, rgb:'216,201,160', flatten:Math.abs(Math.cos(26.73*Math.PI/180))},
+      uranus:{inner:1.6, outer:2.0, rgb:'85,101,112', flatten:Math.abs(Math.cos(97.77*Math.PI/180))}
     };
     SOLAR_BODY_NAMES.forEach(name=>{
       const b=SOLAR_BODIES[name];
@@ -3380,8 +3607,11 @@ class RocketSimApp {
       const ring=RING_INFO[name];
       if (ring && realR>1.5){
         ctx.strokeStyle=`rgba(${ring.rgb},0.65)`;
-        ctx.lineWidth=Math.max(1,(ring.outer-ring.inner)*realR);
-        ctx.beginPath(); ctx.arc(s.x,s.y,(ring.inner+ring.outer)/2*realR,0,Math.PI*2); ctx.stroke();
+        // Grosor de linea real del anillo, no un donut grueso: antes casi igual al radio del
+        // planeta (outer-inner=1.0*realR); un anillo real es fino comparado con el planeta.
+        ctx.lineWidth=Math.max(1,(ring.outer-ring.inner)*realR*0.35);
+        const rMean=(ring.inner+ring.outer)/2*realR;
+        ctx.beginPath(); ctx.ellipse(s.x,s.y,rMean,rMean*ring.flatten,0,0,Math.PI*2); ctx.stroke();
       }
 
       // Indicador de altura sobre el plano de la eclíptica: anillo azul si esta por encima,
