@@ -248,11 +248,15 @@ class StageStack {
       ? stages.map(s=>({
           ...s,
           thrust_base: s.thrust_base!==undefined ? s.thrust_base : s.thrust,
-          isp_base:    s.isp_base!==undefined    ? s.isp_base    : s.isp
+          isp_base:    s.isp_base!==undefined    ? s.isp_base    : s.isp,
+          // Toda etapa arranca apagada, incluso si declara fixedThrust (SRB): un solido
+          // esta "listo para arder" pero no arde hasta que el jugador (o el piloto
+          // automatico) pide throttle>0 -- ver _integrate() e effectiveThrustAt().
+          ignited: false
         }))
       : [
           { id:'unica', dryMass:30000, fuelMass:270000, maxFuelMass:270000,
-            thrust:6500000, isp:450, thrust_base:6500000, isp_base:450 }
+            thrust:6500000, isp:450, thrust_base:6500000, isp_base:450, ignited:false }
         ];
     this.currentIndex = 0;
     this._totalMaxFuel = this.stages.reduce((a,s)=>a+s.maxFuelMass,0);
@@ -281,7 +285,7 @@ class StageStack {
   set maxThrust(v){ this.current().thrust=v; }
   get isp(){ return this.current().isp; }
   set isp(v){ this.current().isp=v; }
-  reset(){ this.currentIndex=0; for (const s of this.stages) s.fuelMass=s.maxFuelMass; this.justSeparated=null; }
+  reset(){ this.currentIndex=0; for (const s of this.stages){ s.fuelMass=s.maxFuelMass; s.ignited=false; } this.justSeparated=null; }
   // Empuje efectivo y caudal masico de la etapa actual, dado el throttle del jugador y el
   // tiempo de mision. Dos tipos de etapa:
   //  - Simple: usa thrust/isp (comportamiento clasico). notThrottlable fuerza throttle=1
@@ -294,7 +298,10 @@ class StageStack {
     const c=this.current();
     if (!c) return {thrust:0, massFlow:0};
     if (c.fixedThrust!==undefined || c.throttlableThrust!==undefined){
-      const fixedT=c.fixedThrust||0, fixedIsp=c.fixedIsp||1;
+      // fixedT gateado por ignited: un SRB "listo" pero sin encender no produce empuje.
+      // Se enciende la primera vez que _integrate() ve throttle>0 en esta etapa (y, una
+      // vez encendido, ya no se apaga -- un solido no se puede apagar).
+      const fixedT=c.ignited ? (c.fixedThrust||0) : 0, fixedIsp=c.fixedIsp||1;
       const throttT=c.throttlableThrust||0, throttIsp=c.throttlableIsp||1;
       let effThrottle=throttle;
       if (c.throttleDownStart!==undefined && c.throttleDownEnd!==undefined && missionTime>=c.throttleDownStart && missionTime<=c.throttleDownEnd){
@@ -308,7 +315,10 @@ class StageStack {
     // notThrottlable: siempre al 100% mientras haya combustible, SIN IMPORTAR el throttle
     // del jugador (ni siquiera 0) -- un SRB no se puede apagar una vez encendido. La decision
     // de si esta etapa deberia estar ardiendo en absoluto (fuelMass>0) la toma el llamador.
-    const effThrottle = c.notThrottlable ? 1 : throttle;
+    // Gateado por ignited igual que el componente fijo de una etapa hibrida (ver arriba):
+    // ninguna mision actual usa notThrottlable simple, pero sin este gateo una futura
+    // reproduciria el mismo bug del Shuttle (arder desde el primer frame sin throttle>0).
+    const effThrottle = c.notThrottlable ? (c.ignited ? 1 : 0) : throttle;
     const t=(c.thrust||0)*effThrottle;
     const mdot=(c.isp>0) ? t/(c.isp*9.81) : 0;
     return {thrust:t, massFlow:mdot};
@@ -486,6 +496,15 @@ class RocketPhysics {
   _integrate(dt, controls){
     this.time+=dt;
     this.throttle=Math.max(0,Math.min(1,controls.throttle||0));
+    // Encendido de etapa: la primera vez que el jugador (o el piloto automatico) pide
+    // throttle>0 en la etapa actual, la marcamos como encendida. A partir de ahi, el
+    // componente fijo (SRB) arde y no se puede apagar (un solido no se apaga). Antes de
+    // ese momento, ninguna etapa produce empuje aunque declare fixedThrust -- el SRB del
+    // Shuttle esta "listo para arder" pero no esta ardiendo hasta que el jugador lanza.
+    if (this.throttle>0){
+      const cur=this.stack.current();
+      if (cur && !cur.ignited) cur.ignited=true;
+    }
     // En tierra, sin empuje: si solo corrigieramos DESPUES de integrar (anulando la velocidad
     // tangencial tras el hecho), el primer sub-paso ya se habria desplazado a la velocidad
     // inicial de rotacion terrestre durante todo ese dt -- con timeScale=100 son ~450m/s x
