@@ -2455,6 +2455,10 @@ class MissionAutopilot {
     this.lastExplainPhase = key;
     const isGagarin = this.app.mission && this.app.mission.type==='gagarin';
     const isIss = this.app.mission && this.app.mission.type==='iss';
+    // El Shuttle (como Gagarin e ISS) nunca alunizo -- sin incluirlo aqui, mostraba
+    // "Alunizaje automatico logrado" al terminar el fasing con la ISS (bug real,
+    // encontrado al verificar la secuencia completa del Shuttle tras el fix de fase).
+    const isShuttle = this.app.mission && this.app.mission.type==='shuttle';
     const MSG = {
       ascent: '🚀 Piloto automático: despegando con giro gravitatorio real hacia el este.',
       coast_leo: '🛰️ En órbita terrestre. Preparando la inyección translunar.',
@@ -2462,7 +2466,7 @@ class MissionAutopilot {
       coast_tli: '🌌 Crucero hacia la Luna, con correcciones de rumbo automáticas cada 6h simuladas.',
       loi_burn: '🌑 Aproximación lunar: cayendo con seguridad hacia una órbita baja real.',
       descent: '🛬 Descenso motorizado hacia la superficie.',
-      done: (isGagarin || isIss) ? null : '🎉 ¡Alunizaje automático logrado!'
+      done: (isGagarin || isIss || isShuttle) ? null : '🎉 ¡Alunizaje automático logrado!'
     };
     if (MSG[key]) this.app.toast.show(MSG[key], 7000);
   }
@@ -2527,9 +2531,27 @@ class MissionAutopilot {
       const eMag=Math.sqrt(ex*ex+ey*ey+ez*ez);
       const a=1/(2/rMag-speedNow*speedNow/mu);
       const r_p = (isFinite(a)&&a>0) ? a*(1-eMag) : -1;
-      if (r_p>0 && (r_p-SOLAR_BODIES.earth.radius)>346800){ // 85% de 408km, igual que el umbral ya probado
+      // El Shuttle llega aqui con el OMS ya agotado dentro de 'ascent' (perigeo real
+      // +90km, verificado estable 6h) -- muy por debajo de los 346.8km que exige la Soyuz
+      // (que SI tiene combustible de sobra para casi alcanzar los 408km reales antes de
+      // esta fase). iss_orbit hace un teletransporte instantaneo a 100m de la ISS real sin
+      // importar la orbita previa (mismo patron ya aceptado para la Soyuz), asi que al
+      // Shuttle le basta con una orbita estable propia, no con acercarse a 408km reales.
+      // Bug real corregido: sin este umbral mas bajo, el Shuttle llegaba sin combustible y
+      // nunca alcanzaba 346.8km, terminando en "Sin combustible durante la circularizacion".
+      const isShuttleCirc = this.app.mission && this.app.mission.type === 'shuttle';
+      const perigeeThreshold = isShuttleCirc ? 70000 : 346800; // 85% de 408km para el resto
+      // Bug real corregido (afecta a cualquier mision, no solo al Shuttle): antes, al
+      // transicionar a iss_orbit aqui, el codigo seguia evaluando las comprobaciones de
+      // fallo de ABAJO en el MISMO fotograma -- con la Soyuz nunca se notaba porque su
+      // combustible de sobra nunca llegaba a 0% justo al alcanzar el umbral de perigeo,
+      // pero con el Shuttle (combustible agotado desde el principio de esta fase) ambas
+      // condiciones se cumplian a la vez, y "sin combustible" cancelaba la transicion ya
+      // hecha un instante antes. return inmediato evita que esto vuelva a pasar.
+      if (r_p>0 && (r_p-SOLAR_BODIES.earth.radius)>perigeeThreshold){
         this.phase='iss_orbit'; this.phaseStart=p.time; this.explain('iss_orbit');
         this.app.toast.show('🛰️ Órbita real alcanzada cerca de la ISS — perigeo '+((r_p-SOLAR_BODIES.earth.radius)/1000).toFixed(0)+'km', 6000);
+        return controls;
       }
       if (speedNow>=vCirc*1.06){ this.stop('⚠️ Circularización fallida — velocidad excesiva.'); return null; }
       if (preState.fuelPercent<=0){ this.stop('⚠️ Sin combustible durante la circularización.'); return null; }
@@ -2728,8 +2750,14 @@ class MissionAutopilot {
         // cerca, pero reentra). El OMS necesita agotar TODO su combustible para que la
         // circularizacion progrado real surta efecto (asi se calibro: perigeo +103km,
         // estable 6h, cuando el OMS quema hasta el final sin cortar antes).
+        // Salida hacia la ruta de la ISS (iss_coast_apo -> iss_circularize -> iss_orbit),
+        // NO hacia coast_leo/tli_burn (esa es la ruta de Apolo, hacia la Luna). Bug real:
+        // antes de este cambio, el Shuttle llegaba a inOrbit/se quedaba sin combustible en
+        // el OMS y pasaba a coast_leo igual que Apolo, intentando despues una quema
+        // translunar imposible con los 10t de OMS -- "sube y sube hasta quedarse sin
+        // combustible" (confirmado por Luis, reproducido en el arnes).
         if (p.stack.currentIndex===2 && preState.fuelPercent<=0){
-          if (preState.inOrbit){ this.phase='coast_leo'; this.phaseStart=p.time; this.explain('coast_leo'); }
+          if (preState.inOrbit){ this.phase='iss_coast_apo'; this.phaseStart=p.time; this.explain('iss_coast_apo'); }
           else { this.stop('⚠️ Sin combustible antes de alcanzar órbita.'); return null; }
         }
       } else {
