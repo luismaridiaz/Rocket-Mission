@@ -1169,6 +1169,23 @@ class RocketRenderer3D {
     // marco (ver state.launchPadAbs y FRAME_ROTATION_INV) -- sin eso, se veria "al lado" del
     // cohete en vez de "debajo", y se alejaria mucho mas rapido de lo que sube el cohete.
     this.buildLaunchPad();
+    // Suelo local: la esfera 'earth' se coloca en coordenadas BRUTAS (sin FRAME_ROTATION), asi
+    // que cerca del suelo su superficie queda inclinada ~85 grados respecto al 'abajo' del
+    // cohete: se veia como un muro blanco/verde pegado a la nave, tapaba la plataforma y al
+    // aterrizar la capsula parecia flotar. Por debajo de 30 km se oculta la esfera en la vista
+    // principal y se dibuja un disco plano en el marco del cohete (Y=altitud) a y=-altitud.
+    this.localGround=new THREE.Group();
+    this.localGroundMat=new THREE.MeshStandardMaterial({color:0x8a7c55,roughness:1,metalness:0});
+    const lgDisc=new THREE.Mesh(new THREE.CircleGeometry(600000,64),this.localGroundMat);
+    lgDisc.rotation.x=-Math.PI/2; this.localGround.add(lgDisc);
+    const lgHillMat=new THREE.MeshStandardMaterial({color:0x6e6547,roughness:1,flatShading:true});
+    for (let i=0;i<14;i++){
+      const a=(i/14)*Math.PI*2+(i%3)*0.11, r=300+(i%4)*40, h=6+((i*7)%9);
+      const hill=new THREE.Mesh(new THREE.ConeGeometry(24+(i%5)*5,h,7),lgHillMat);
+      hill.position.set(Math.cos(a)*r,h/2,Math.sin(a)*r); this.localGround.add(hill);
+    }
+    this.localGround.visible=false; this.scene.add(this.localGround);
+    this._skyLow=new THREE.Color(0x7fb2e5); this._skySpace=new THREE.Color(0x03030a);
     // Marcadores de Baikonur (despegue) y Smelovka (aterrizaje), solo en la mision Gagarin.
     // Se colocan en el MISMO marco fijo que usa la fisica de la nave (no giran con la textura
     // de la Tierra) para que coincidan siempre con el punto real de despegue/aterrizaje de la
@@ -1860,32 +1877,14 @@ class RocketRenderer3D {
     const trench=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.3,0.6,16),trenchMat);
     trench.position.y=-0.9; this.launchPadGroup.add(trench);
 
-    // Terreno de referencia: sin el, la plataforma (foso + 4 brazos) parecia flotar en el
-    // vacio ('despega desde el aire'). Estepa plana grande con anillos de color hacia el
-    // borde (se funde con el tono del horizonte) + un anillo de colinas bajas lejanas.
-    const groundMat=new THREE.MeshStandardMaterial({color:0x8a7c55,roughness:1,metalness:0,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
-    const ground=new THREE.Mesh(new THREE.CylinderGeometry(260,260,0.4,48),groundMat);
-    ground.position.y=-0.18; this.launchPadGroup.add(ground); // superficie en y=+0.02: la esfera de la Tierra pasa por y=0 en el origen y taparia cualquier cosa por debajo
-    const pit=new THREE.Mesh(new THREE.CircleGeometry(1.4,24),new THREE.MeshBasicMaterial({color:0x2b2926,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6}));
-    pit.rotation.x=-Math.PI/2; pit.position.y=0.03; this.launchPadGroup.add(pit); // boca del foso de llamas
-    const hazeMat=new THREE.MeshBasicMaterial({color:0xb9b59a,transparent:true,opacity:0.55,depthWrite:false,side:THREE.DoubleSide});
-    const haze=new THREE.Mesh(new THREE.RingGeometry(120,260,48),hazeMat);
-    haze.rotation.x=-Math.PI/2; haze.position.y=0.04; hazeMat.polygonOffset=true; hazeMat.polygonOffsetFactor=-5; hazeMat.polygonOffsetUnits=-5; this.launchPadGroup.add(haze);
-    const hillMat=new THREE.MeshStandardMaterial({color:0x6e6547,roughness:1,flatShading:true});
-    for (let i=0;i<14;i++){
-      const a=(i/14)*Math.PI*2+(i%3)*0.11, r=235+(i%4)*6;
-      const h=5+((i*7)%9);
-      const hill=new THREE.Mesh(new THREE.ConeGeometry(18+(i%5)*4,h,7),hillMat);
-      hill.position.set(Math.cos(a)*r,0.02+h/2,Math.sin(a)*r); this.launchPadGroup.add(hill);
-    }
     // Marcas de referencia en el suelo (camino de servicio + rejilla de losas) para que se
     // perciba la altura al subir: sin texturas, un plano liso no da sensacion de escala.
     const roadMat=new THREE.MeshStandardMaterial({color:0x4a4740,roughness:0.9});
     const road=new THREE.Mesh(new THREE.BoxGeometry(150,0.04,5),roadMat);
-    road.position.set(75,0.04,0); roadMat.polygonOffset=true; roadMat.polygonOffsetFactor=-5; roadMat.polygonOffsetUnits=-5; this.launchPadGroup.add(road);
+    road.position.set(75,-0.94,0); this.launchPadGroup.add(road);
     for (let i=1;i<=6;i++){
-      const ring=new THREE.Mesh(new THREE.RingGeometry(i*12-0.12,i*12+0.12,48),new THREE.MeshBasicMaterial({color:0x6b6246,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-5,polygonOffsetUnits:-5}));
-      ring.rotation.x=-Math.PI/2; ring.position.y=0.045; this.launchPadGroup.add(ring);
+      const ring=new THREE.Mesh(new THREE.RingGeometry(i*12-0.12,i*12+0.12,48),new THREE.MeshBasicMaterial({color:0x6b6246,side:THREE.DoubleSide}));
+      ring.rotation.x=-Math.PI/2; ring.position.y=-0.93; this.launchPadGroup.add(ring);
     }
 
     const R_PIVOT=1.9, Y_PIVOT=-0.8, R_CONTACT=0.85, Y_CONTACT=0.15;
@@ -1958,7 +1957,7 @@ class RocketRenderer3D {
     // (altitude=0, la Tierra reposicionada para tocar y=0 exactamente) la capsula se queda
     // flotando 2 unidades por encima del suelo. Mismo patron ya usado para lmLegsGroup en
     // Apolo: reubicar solo en 'done', para que la base (radio 0.95) toque el suelo.
-    if (this.vostokSphere) this.vostokSphere.position.y = (missionPhase==='done') ? 0.95 : 2.0;
+    if (this.vostokSphere) this.vostokSphere.position.y = (missionPhase==='done') ? -0.05 : 2.0; // base en y=-1.0 = suelo local (ver localGround)
   }
 
   // Separacion visual de etapas, atada a las FASES del piloto automatico (no al reloj real):
@@ -2188,6 +2187,29 @@ class RocketRenderer3D {
     if (this.ground) this.ground.visible = false;
     if (this.grid) this.grid.visible = false;
 
+    // suelo local + cielo (ver nota en setupSolarSystem)
+    {
+      const low = state.body==='earth' && state.altitude<30000;
+      const f = low ? Math.min(1,Math.max(0,(state.altitude-8000)/22000)) : 1; // 0 = suelo/cielo diurno, 1 = espacio
+      this._lowAlt = low;
+      if (this.localGround){
+        this.localGround.visible = low;
+        if (low){
+          this.localGround.position.set(0,-state.altitude-1.0,0); // 1.0 bajo el origen del cohete: los motores llegan a y=-0.8
+          this.localGroundMat.color.set(0x8a7c55).lerp(this._skySpace,f);
+        }
+      }
+      if (this.earth) this.earth.visible = !low;
+      if (this.atmosphere && low) this.atmosphere.visible=false;
+      if (low){
+        const sky=this._skyLow.clone().lerp(this._skySpace,f);
+        this.scene.background=sky;
+        this.scene.fog = f<1 ? new THREE.Fog(sky.getHex(),400,60000+f*400000) : null;
+      } else {
+        this.scene.background=this._skySpace; this.scene.fog=null;
+      }
+    }
+
     if (this.stars){
       this.stars.position.set(0,0,0);
       this.starClock += frameDt;
@@ -2301,12 +2323,20 @@ class RocketRenderer3D {
     const atmoWasVisible = this.atmosphere && this.atmosphere.visible;
     if (this.clouds) this.clouds.visible=false;
     if (this.atmosphere) this.atmosphere.visible=false;
+    // las tarjetas siguen viendo la esfera real (no el suelo local ni el cielo diurno)
+    const miniSaved={earth:this.earth&&this.earth.visible, lg:this.localGround&&this.localGround.visible, fog:this.scene.fog, bg:this.scene.background};
+    if (this.earth) this.earth.visible=true;
+    if (this.localGround) this.localGround.visible=false;
+    this.scene.fog=null; this.scene.background=this._skySpace;
     this.frontCam.position.copy(frontPos); this.frontCam.lookAt(earthPos);
     this.frontRenderer.render(this.scene,this.frontCam);
     this.backCam.position.copy(backPos); this.backCam.lookAt(moonPos);
     this.backRenderer.render(this.scene,this.backCam);
     if (this.clouds) this.clouds.visible=cloudsWasVisible;
     if (this.atmosphere) this.atmosphere.visible=atmoWasVisible;
+    if (this.earth) this.earth.visible=miniSaved.earth;
+    if (this.localGround) this.localGround.visible=miniSaved.lg;
+    this.scene.fog=miniSaved.fog; this.scene.background=miniSaved.bg;
 
     const fData=document.getElementById('mvFrontData'), bData=document.getElementById('mvBackData');
     const distToEarthSurface = shipPos.distanceTo(earthPos) - this.R_earth;
