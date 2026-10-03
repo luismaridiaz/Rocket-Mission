@@ -942,8 +942,8 @@ function makeCloudsTexture(){
   for (let i=0;i<40;i++){
     const cx=Math.random()*1024, cy=Math.random()*512;
     const rx=15+Math.random()*45, ry=8+Math.random()*18;
-    const alpha=0.10+Math.random()*0.20;
-    ctx.fillStyle=`rgba(255,255,255,${alpha})`;
+    const alpha=0.06+Math.random()*0.12;
+    ctx.fillStyle=`rgba(226,232,240,${alpha})`; // blanco roto azulado, no blanco puro
     ctx.beginPath();
     const pts=10;
     for(let j=0;j<=pts;j++){
@@ -1185,7 +1185,7 @@ class RocketRenderer3D {
       this.scene.add(this.smelovkaMarker);
     }
 
-    const cloudsMat=new THREE.MeshStandardMaterial({map:makeCloudsTexture(),transparent:true,depthWrite:false,roughness:1});
+    const cloudsMat=new THREE.MeshStandardMaterial({map:makeCloudsTexture(),color:0xd8dde6,transparent:true,opacity:0.8,depthWrite:false,roughness:1,metalness:0});
     this.clouds=new THREE.Mesh(new THREE.SphereGeometry(SOLAR_BODIES.earth.radius*1.008,64,64),cloudsMat);
     this.scene.add(this.clouds);
 
@@ -1860,6 +1860,34 @@ class RocketRenderer3D {
     const trench=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.3,0.6,16),trenchMat);
     trench.position.y=-0.9; this.launchPadGroup.add(trench);
 
+    // Terreno de referencia: sin el, la plataforma (foso + 4 brazos) parecia flotar en el
+    // vacio ('despega desde el aire'). Estepa plana grande con anillos de color hacia el
+    // borde (se funde con el tono del horizonte) + un anillo de colinas bajas lejanas.
+    const groundMat=new THREE.MeshStandardMaterial({color:0x8a7c55,roughness:1,metalness:0,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+    const ground=new THREE.Mesh(new THREE.CylinderGeometry(260,260,0.4,48),groundMat);
+    ground.position.y=-0.18; this.launchPadGroup.add(ground); // superficie en y=+0.02: la esfera de la Tierra pasa por y=0 en el origen y taparia cualquier cosa por debajo
+    const pit=new THREE.Mesh(new THREE.CircleGeometry(1.4,24),new THREE.MeshBasicMaterial({color:0x2b2926,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6}));
+    pit.rotation.x=-Math.PI/2; pit.position.y=0.03; this.launchPadGroup.add(pit); // boca del foso de llamas
+    const hazeMat=new THREE.MeshBasicMaterial({color:0xb9b59a,transparent:true,opacity:0.55,depthWrite:false,side:THREE.DoubleSide});
+    const haze=new THREE.Mesh(new THREE.RingGeometry(120,260,48),hazeMat);
+    haze.rotation.x=-Math.PI/2; haze.position.y=0.04; hazeMat.polygonOffset=true; hazeMat.polygonOffsetFactor=-5; hazeMat.polygonOffsetUnits=-5; this.launchPadGroup.add(haze);
+    const hillMat=new THREE.MeshStandardMaterial({color:0x6e6547,roughness:1,flatShading:true});
+    for (let i=0;i<14;i++){
+      const a=(i/14)*Math.PI*2+(i%3)*0.11, r=235+(i%4)*6;
+      const h=5+((i*7)%9);
+      const hill=new THREE.Mesh(new THREE.ConeGeometry(18+(i%5)*4,h,7),hillMat);
+      hill.position.set(Math.cos(a)*r,0.02+h/2,Math.sin(a)*r); this.launchPadGroup.add(hill);
+    }
+    // Marcas de referencia en el suelo (camino de servicio + rejilla de losas) para que se
+    // perciba la altura al subir: sin texturas, un plano liso no da sensacion de escala.
+    const roadMat=new THREE.MeshStandardMaterial({color:0x4a4740,roughness:0.9});
+    const road=new THREE.Mesh(new THREE.BoxGeometry(150,0.04,5),roadMat);
+    road.position.set(75,0.04,0); roadMat.polygonOffset=true; roadMat.polygonOffsetFactor=-5; roadMat.polygonOffsetUnits=-5; this.launchPadGroup.add(road);
+    for (let i=1;i<=6;i++){
+      const ring=new THREE.Mesh(new THREE.RingGeometry(i*12-0.12,i*12+0.12,48),new THREE.MeshBasicMaterial({color:0x6b6246,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-5,polygonOffsetUnits:-5}));
+      ring.rotation.x=-Math.PI/2; ring.position.y=0.045; this.launchPadGroup.add(ring);
+    }
+
     const R_PIVOT=1.9, Y_PIVOT=-0.8, R_CONTACT=0.85, Y_CONTACT=0.15;
     const dx=R_CONTACT-R_PIVOT, dy=Y_CONTACT-Y_PIVOT;
     const armLen=Math.hypot(dx,dy), armAngle=Math.atan2(dx,dy);
@@ -1922,6 +1950,15 @@ class RocketRenderer3D {
     const hasChute = missionPhase==='gagarin_parachute';
     if (this.vostokEquipGroup) this.vostokEquipGroup.visible = hasEquip;
     if (this.parachuteGroup) this.parachuteGroup.visible = hasChute;
+    // Bug real (reportado por Luis, confirmado visualmente): vostokSphere (la capsula, lo
+    // unico visible tras separar vostokEquipGroup) esta fija en y=2.0 -- un offset pensado
+    // para cuando el modulo de instrumentos (motor en y=-0.55, el punto de contacto real con
+    // la plataforma) sigue presente. Durante el vuelo esto es imperceptible (la Tierra entera
+    // se desplaza segun la altitud real, no este offset interno del modelo), pero al aterrizar
+    // (altitude=0, la Tierra reposicionada para tocar y=0 exactamente) la capsula se queda
+    // flotando 2 unidades por encima del suelo. Mismo patron ya usado para lmLegsGroup en
+    // Apolo: reubicar solo en 'done', para que la base (radio 0.95) toque el suelo.
+    if (this.vostokSphere) this.vostokSphere.position.y = (missionPhase==='done') ? 0.95 : 2.0;
   }
 
   // Separacion visual de etapas, atada a las FASES del piloto automatico (no al reloj real):
@@ -2251,12 +2288,25 @@ class RocketRenderer3D {
     const isIssMission = typeof window!=='undefined' && window.MISSION_CONFIG && window.MISSION_CONFIG.type==='iss';
     const moonPos = isIssMission && this.issGroup ? this.issGroup.position : (this.moon ? this.moon.position : new THREE.Vector3(1800000,2600000,-1200000));
     const frontPos=shipPos.clone().addScaledVector(heading,6);
+    const backPos=shipPos.clone().addScaledVector(heading,-6);
+    // Bug real: a baja altitud (ascenso temprano, descenso en paracaidas) la nave queda
+    // por debajo del radio de las capas de nubes (1.008x) y/o atmosfera (1.025x). Estas
+    // camaras en miniatura, a solo 6m de la nave, terminan DENTRO de esas capas -- y como
+    // son esferas completas, cualquier direccion que miren (Tierra o Luna) las atraviesa,
+    // viendolas desde dentro con AdditiveBlending: esto satura la imagen (el "amarillo con
+    // rayos" en la tarjeta de Tierra y el "rosa" en la de Luna son la MISMA causa). Se
+    // ocultan solo para estas dos camaras -- composer.render() (la vista principal) ya se
+    // ejecuto arriba, asi que no se ve afectada.
+    const cloudsWasVisible = this.clouds && this.clouds.visible;
+    const atmoWasVisible = this.atmosphere && this.atmosphere.visible;
+    if (this.clouds) this.clouds.visible=false;
+    if (this.atmosphere) this.atmosphere.visible=false;
     this.frontCam.position.copy(frontPos); this.frontCam.lookAt(earthPos);
     this.frontRenderer.render(this.scene,this.frontCam);
-
-    const backPos=shipPos.clone().addScaledVector(heading,-6);
     this.backCam.position.copy(backPos); this.backCam.lookAt(moonPos);
     this.backRenderer.render(this.scene,this.backCam);
+    if (this.clouds) this.clouds.visible=cloudsWasVisible;
+    if (this.atmosphere) this.atmosphere.visible=atmoWasVisible;
 
     const fData=document.getElementById('mvFrontData'), bData=document.getElementById('mvBackData');
     const distToEarthSurface = shipPos.distanceTo(earthPos) - this.R_earth;
