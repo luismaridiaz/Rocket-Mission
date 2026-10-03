@@ -374,7 +374,13 @@ class RocketPhysics {
     else { T=216.65; p=0; }
     return { density: p>0?p/(287.05*T):0 };
   }
-  refuel(){ const cur=this.stack.current(); cur.fuelMass=cur.maxFuelMass; }
+  refuel(){
+    const cur=this.stack.current();
+    // Una etapa de combustible solido (fixedThrust, p.ej. los SRB del Shuttle) no se puede
+    // 'repostar': reponer sus 1.179.400 kg a mitad de ascenso seria un exploit.
+    if (cur.fixedThrust) return false;
+    cur.fuelMass=cur.maxFuelMass; return true;
+  }
   // La app puede inyectar un resolver que decida como calcular la posicion/velocidad
   // de cada target de acoplamiento. Si no se inyecta, se usa `dockingTargetState`
   // (comportamiento original del sandbox). En iss.html se inyecta uno que usa la
@@ -2514,6 +2520,7 @@ class MissionAutopilot {
     this.phaseStart = this.app.physics.time;
     this._targetedOnce = false; this._loiSub = undefined; this._descSub = undefined;
     this._fixedDeorbitDir = null; this._numBurns = 1; this.lastExplainPhase = null;
+    this._shuttleRefueled = false;
     this.explain(this.phase);
   }
   stop(msg){
@@ -2658,8 +2665,18 @@ class MissionAutopilot {
       const radialDir = { x: issPos.x/rMag, y: issPos.y/rMag, z: issPos.z/rMag };
       p.x = issPos.x - radialDir.x*100; p.y = issPos.y - radialDir.y*100; p.z = issPos.z - radialDir.z*100;
       p.u = issVel.x; p.v = issVel.y; p.w = issVel.z;
+      // Shuttle: llega aqui con el OMS casi vacio (lo gasta en el ascenso). Se repone el
+      // propelente de reserva del Orbiter, una sola vez, para que el acople automatico
+      // pueda frenar. Mismo tipo de simplificacion que el fasing instantaneo.
+      let shuttleRefueled = false;
+      if (this.app.mission && this.app.mission.type==='shuttle' && !this._shuttleRefueled){
+        this._shuttleRefueled = true;
+        shuttleRefueled = p.refuel();
+      }
       this.phase='done'; this.explain('done'); this.active=false; this._zeroControls();
-      this.app.toast.show('🛰️ Fasing completado — la ISS está a solo 100 m. ¡Usa el Acople automático para acercarte!', 8000);
+      this.app.toast.show(shuttleRefueled
+        ? '🛰️ Fasing completado — la ISS está a 100 m. OMS repostado con el propelente de reserva. ¡Usa el Acople automático!'
+        : '🛰️ Fasing completado — la ISS está a solo 100 m. ¡Usa el Acople automático para acercarte!', 8000);
       controls.throttle=0; controls.pitch=0; controls.yaw=0; controls.roll=0; controls.timeScale=1;
       return controls;
     }
@@ -3133,7 +3150,15 @@ class RocketSimApp {
       document.getElementById('statusText').textContent='EN ESPERA';
     });
     document.getElementById('btnRefuel').addEventListener('click',()=>{
-      this.physics.refuel();
+      // Shuttle: el unico propelente 'de reserva' es el del OMS del Orbiter. Repostar los
+      // tanques del ET/SSME en pleno ascenso seria un exploit, asi que solo se permite
+      // con el Orbiter ya solo (ultima etapa).
+      const st=this.physics.stack;
+      if (this.mission && this.mission.type==='shuttle' && st.currentIndex < st.stages.length-1){
+        this.toast.show('⛽ Solo puedes repostar el OMS una vez separado el ET', 4000);
+        return;
+      }
+      if (!this.physics.refuel()) this.toast.show('⛽ Una etapa de combustible sólido no se puede repostar', 4000);
     });
     document.getElementById('btnDock').addEventListener('click',()=>{
       const ok=this.physics.tryDock();
